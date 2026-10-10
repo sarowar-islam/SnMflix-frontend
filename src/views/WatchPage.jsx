@@ -17,7 +17,7 @@ export default function WatchPage() {
 
   const mediaType = searchParams.get('type') || 'movie';
 
-  // Server selection locked to Server 1 (vidsrc.sh)
+  // Server selection locked to Server 1 (player.melopee.app)
   const selectedServer = 1;
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
@@ -27,8 +27,8 @@ export default function WatchPage() {
   const serversList = [
     {
       id: 1,
-      name: 'Server 1 (vidsrc.sh - Recommended)',
-      urlFn: (id, s, e, type) => type === 'tv' ? `https://vidsrc.sh/embed/tv?tmdb=${id}&season=${s}&episode=${e}` : `https://vidsrc.sh/embed/movie?tmdb=${id}`
+      name: 'Server 1 (player.melopee.app - Recommended)',
+      urlFn: (id, s, e, type) => type === 'tv' ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=${s}&episode=${e}` : `https://player.melopee.app/embed/movie?tmdb=${id}`
     },
   ];
 
