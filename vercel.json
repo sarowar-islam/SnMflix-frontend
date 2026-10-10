@@ -12,6 +12,17 @@
       "destination": "/api/og?id=:id"
     },
     {
+      "source": "/watch/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+        "value": "(facebookexternalhit|Twitterbot|Discordbot|WhatsApp|TelegramBot|Slackbot|LinkedInBot|Pinterest|Googlebot|Applebot)"
+        }
+      ],
+      "destination": "/api/og?id=:id"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

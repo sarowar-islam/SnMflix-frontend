@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     });
     const movie = tmdbRes.data;
     const title = movie.title || movie.name || 'Movie';
-    const overview = movie.overview || `Watch ${title} online in HD on SnM Flix.`;
+    const description = `Watch ${title} online in HD on SnM Flix. Stream now for free!`;
     const backdrop = movie.backdrop_path ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : 'https://snmflix.vercel.app/images/og-image.png';
 
     res.setHeader('Content-Type', 'text/html');
@@ -36,24 +36,24 @@ export default async function handler(req, res) {
         <head>
           <meta charset="UTF-8" />
           <title>${title} — Watch Online Free | SnM Flix</title>
-          <meta name="description" content="${overview}" />
+          <meta name="description" content="${description}" />
 
           <meta property="og:type" content="video.movie" />
           <meta property="og:url" content="https://snmflix.vercel.app/movie/${id}?type=${type}" />
           <meta property="og:title" content="${title} — Watch Online Free | SnM Flix" />
-          <meta property="og:description" content="${overview}" />
+          <meta property="og:description" content="${description}" />
           <meta property="og:image" content="${backdrop}" />
           <meta property="og:site_name" content="SnM Flix" />
 
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:url" content="https://snmflix.vercel.app/movie/${id}?type=${type}" />
           <meta name="twitter:title" content="${title} — Watch Online Free | SnM Flix" />
-          <meta name="twitter:description" content="${overview}" />
+          <meta name="twitter:description" content="${description}" />
           <meta name="twitter:image" content="${backdrop}" />
         </head>
         <body>
           <h1>${title}</h1>
-          <p>${overview}</p>
+          <p>${description}</p>
         </body>
       </html>
     `);
