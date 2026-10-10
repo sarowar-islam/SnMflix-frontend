@@ -38,11 +38,34 @@ export default function WatchPage() {
 
     fetchMovies.fetchMovieDetails(id, mediaType)
       .then(res => {
-        setMovie(res.data);
         const m = res.data;
+        setMovie(m);
+        const mTitle = m.title || m.name || 'Movie';
+        document.title = `Watching ${mTitle} — SnM Flix`;
+        let metaDesc = document.querySelector("meta[name='description']");
+        if (metaDesc) {
+          metaDesc.setAttribute("content", `Watch ${mTitle} online in HD on SnM Flix. Stream ${mTitle} free with no ads.`);
+        }
+        let ogTitle = document.querySelector("meta[property='og:title']");
+        if (ogTitle) ogTitle.setAttribute("content", `Watching ${mTitle} — SnM Flix`);
+        let ogDesc = document.querySelector("meta[property='og:description']");
+        if (ogDesc) ogDesc.setAttribute("content", `Watch ${mTitle} online in HD on SnM Flix. Stream ${mTitle} free with no ads.`);
+        let ogImage = document.querySelector("meta[property='og:image']");
+        if (ogImage) {
+          ogImage.setAttribute("content", m.backdrop_path ? getImageUrl(m.backdrop_path, 'original') : '/images/og-image.png');
+        }
+        let twTitle = document.querySelector("meta[name='twitter:title']");
+        if (twTitle) twTitle.setAttribute("content", `Watching ${mTitle} — SnM Flix`);
+        let twDesc = document.querySelector("meta[name='twitter:description']");
+        if (twDesc) twDesc.setAttribute("content", `Watch ${mTitle} online in HD on SnM Flix. Stream ${mTitle} free with no ads.`);
+        let twImage = document.querySelector("meta[name='twitter:image']");
+        if (twImage) {
+          twImage.setAttribute("content", m.backdrop_path ? getImageUrl(m.backdrop_path, 'original') : '/images/og-image.png');
+        }
+
         addHistory({
           id: String(m.id),
-          title: m.title || m.name,
+          title: mTitle,
           posterUrl: getImageUrl(m.poster_path, 'w500'),
           backdropUrl: getImageUrl(m.backdrop_path, 'original'),
           rating: m.vote_average,

@@ -53,7 +53,23 @@ export default function MovieDetails() {
         document.title = `${mTitle} — Watch Online Free | SnM Flix`;
         let metaDesc = document.querySelector("meta[name='description']");
         if (metaDesc) {
-          metaDesc.setAttribute("content", movieData.overview || `Watch ${mTitle} online in HD on SnM Flix.`);
+          metaDesc.setAttribute("content", `Watch ${mTitle} online in HD on SnM Flix. Stream ${mTitle} free with no ads.`);
+        }
+        let ogTitle = document.querySelector("meta[property='og:title']");
+        if (ogTitle) ogTitle.setAttribute("content", `${mTitle} — Watch Online Free | SnM Flix`);
+        let ogDesc = document.querySelector("meta[property='og:description']");
+        if (ogDesc) ogDesc.setAttribute("content", `Watch ${mTitle} online in HD on SnM Flix. Stream ${mTitle} free with no ads.`);
+        let ogImage = document.querySelector("meta[property='og:image']");
+        if (ogImage) {
+          ogImage.setAttribute("content", movieData.backdrop_path ? getImageUrl(movieData.backdrop_path, 'original') : '/images/og-image.png');
+        }
+        let twTitle = document.querySelector("meta[name='twitter:title']");
+        if (twTitle) twTitle.setAttribute("content", `${mTitle} — Watch Online Free | SnM Flix`);
+        let twDesc = document.querySelector("meta[name='twitter:description']");
+        if (twDesc) twDesc.setAttribute("content", `Watch ${mTitle} online in HD on SnM Flix. Stream ${mTitle} free with no ads.`);
+        let twImage = document.querySelector("meta[name='twitter:image']");
+        if (twImage) {
+          twImage.setAttribute("content", movieData.backdrop_path ? getImageUrl(movieData.backdrop_path, 'original') : '/images/og-image.png');
         }
       })
       .catch(() => setMovie(null))
