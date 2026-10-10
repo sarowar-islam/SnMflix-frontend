@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   WATCHLIST: 'snmflix_watchlist',
   FAVORITES: 'snmflix_favorites',
+  WATCH_HISTORY: 'snmflix_watch_history',
   USER: 'snmflix_user',
   TOKEN: 'snmflix_token'
 };
@@ -31,10 +32,18 @@ export const toggleInList = (key, item) => {
   if (exists) {
     newList = list.filter(i => i.id !== item.id);
   } else {
-    newList = [...list, item];
+    newList = [item, ...list];
   }
 
   saveList(key, newList);
+  return newList;
+};
+
+export const addToWatchHistory = (item) => {
+  const list = getList(STORAGE_KEYS.WATCH_HISTORY);
+  const filtered = list.filter(i => i.id !== item.id);
+  const newList = [item, ...filtered].slice(0, 20);
+  saveList(STORAGE_KEYS.WATCH_HISTORY, newList);
   return newList;
 };
 

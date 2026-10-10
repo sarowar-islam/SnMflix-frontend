@@ -3,7 +3,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 import { useAuth } from '../context/AuthContext';
 import MovieCard from '../components/MovieCard';
-import { Play, Heart, Plus, Check, Star, Calendar, Clock, ArrowLeft, MessageSquare, Send } from 'lucide-react';
+import { Play, Heart, Plus, Check, Star, Calendar, Clock, ArrowLeft, MessageSquare } from 'lucide-react';
 
 export default function MovieDetails() {
   const { id } = useParams();
@@ -11,47 +11,94 @@ export default function MovieDetails() {
   const mediaType = searchParams.get('type') || 'movie';
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  // Comment states
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
+  const [visibleReviewsCount, setVisibleReviewsCount] = useState(2);
 
-  const { user, isWatchlist, isFavorite, toggleWatchlist, toggleFavorite } = useAuth();
+  const [similarMovies, setSimilarMovies] = useState([]);
+  const [similarPage, setSimilarPage] = useState(1);
+  const [hasMoreSimilar, setHasMoreSimilar] = useState(true);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+
+  const { isWatchlist, isFavorite, toggleWatchlist, toggleFavorite } = useAuth();
 
   useEffect(() => {
     window.scrollTo(0, 0);
     setLoading(true);
-    fetchMovies.fetchMovieDetails(id, mediaType)
-      .then(res => setMovie(res.data))
+    setVisibleReviewsCount(2);
+
+    Promise.all([
+      fetchMovies.fetchMovieDetails(id, mediaType),
+      fetchMovies.fetchRecommendations(id, mediaType, 1).catch(() => ({ data: { results: [] } }))
+    ])
+      .then(([movieRes, recRes]) => {
+        const movieData = movieRes.data;
+        setMovie(movieData);
+
+        const similarFromApi = movieData.similar?.results || [];
+        const recsFromApi = recRes.data.results || [];
+
+        const combined = [...recsFromApi, ...similarFromApi].filter(m => m.poster_path);
+        const uniqueMap = new Map();
+        combined.forEach(m => {
+          if (m.id && !uniqueMap.has(m.id)) {
+            uniqueMap.set(m.id, m);
+          }
+        });
+
+        const sim = Array.from(uniqueMap.values());
+        setSimilarMovies(sim);
+        setSimilarPage(1);
+        setHasMoreSimilar(sim.length > 0);
+
+        const mTitle = movieData.title || movieData.name || 'Movie';
+        document.title = `${mTitle} — Watch Online Free | SnM Flix`;
+        let metaDesc = document.querySelector("meta[name='description']");
+        if (metaDesc) {
+          metaDesc.setAttribute("content", movieData.overview || `Watch ${mTitle} online in HD on SnM Flix.`);
+        }
+      })
       .catch(() => setMovie(null))
       .finally(() => setLoading(false));
-
-    // Load comments from localStorage for this specific movie
-    const saved = localStorage.getItem(`comments_${id}`);
-    if (saved) {
-      try { setComments(JSON.parse(saved)); } catch(e){}
-    } else {
-      setComments([
-        { id: 1, user: 'cinemafan99', text: 'Absolute masterpiece! The cinematography is breathtaking.', date: '2 days ago' },
-        { id: 2, user: 'moviebuff_21', text: 'Loved every minute of it. Highly recommended!', date: '1 week ago' }
-      ]);
-    }
   }, [id, mediaType]);
 
-  const handleAddComment = (e) => {
-    e.preventDefault();
-    if(!newComment.trim() || !user) return;
-    const commentObj = {
-      id: Date.now(),
-      user: user.name || user.email?.split('@')[0] || 'User',
-      text: newComment.trim(),
-      date: 'Just now'
-    };
-    const updated = [commentObj, ...comments];
-    setComments(updated);
-    localStorage.setItem(`comments_${id}`, JSON.stringify(updated));
-    setNewComment('');
+  const loadMoreSimilar = () => {
+    if (loadingSimilar || !hasMoreSimilar) return;
+    setLoadingSimilar(true);
+    const nextPage = similarPage + 1;
+
+    Promise.all([
+      fetchMovies.fetchRecommendations(id, mediaType, nextPage).catch(() => ({ data: { results: [] } })),
+      fetchMovies.fetchSimilar(id, mediaType, nextPage).catch(() => ({ data: { results: [] } }))
+    ])
+      .then(([recRes, simRes]) => {
+        const newRecs = recRes.data.results || [];
+        const newSim = simRes.data.results || [];
+        const combined = [...newRecs, ...newSim].filter(m => m.poster_path);
+
+        const existingIds = new Set(similarMovies.map(m => m.id));
+        const uniqueNew = combined.filter(m => !existingIds.has(m.id));
+
+        setSimilarMovies(prev => [...prev, ...uniqueNew]);
+        setSimilarPage(nextPage);
+        if (uniqueNew.length === 0 || nextPage >= 5) {
+          setHasMoreSimilar(false);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingSimilar(false));
   };
+
+  // Infinite scroll listener for Similar Movies
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 600) {
+        if (!loadingSimilar && hasMoreSimilar) {
+          loadMoreSimilar();
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loadingSimilar, hasMoreSimilar, similarPage, id, mediaType]);
 
   if (loading) return (
     <div className="flex justify-center items-center h-screen bg-brand-background">
@@ -68,8 +115,8 @@ export default function MovieDetails() {
 
   const trailer = movie.videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube');
   const cast = movie.credits?.cast?.slice(0, 10) || [];
-  const similar = (movie.similar?.results || []).slice(0, 12).filter(m => m.poster_path);
   const genres = movie.genres || [];
+  const reviews = movie.reviews?.results || [];
 
   const movieForCard = {
     id: String(movie.id),
@@ -98,7 +145,7 @@ export default function MovieDetails() {
         <Link to="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors text-sm">
           <ArrowLeft size={16} /> Back
         </Link>
-        
+
         <div className="flex flex-col md:flex-row gap-8">
           {/* POSTER */}
           <div className="flex-shrink-0 w-40 sm:w-56 md:w-64 lg:w-72 mx-auto md:mx-0">
@@ -224,61 +271,61 @@ export default function MovieDetails() {
           </div>
         )}
 
-        {/* REVIEWS / COMMENTS SECTION */}
+        {/* TMDB REVIEWS SECTION */}
         <div className="mt-14 max-w-3xl">
           <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
             <MessageSquare size={20} className="text-brand-emerald" />
-            Community Reviews & Comments ({comments.length})
+            TMDB Community Reviews ({reviews.length})
           </h2>
 
-          {user ? (
-            <form onSubmit={handleAddComment} className="mb-8">
-              <div className="flex gap-3">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Share your thoughts about this title..."
-                  className="flex-1 bg-brand-surface border border-brand-hover rounded-xl p-3 text-white placeholder-gray-500 focus:outline-none focus:border-brand-emerald resize-none h-24 text-sm"
-                  required
-                />
-              </div>
-              <div className="flex justify-end mt-2">
-                <button
-                  type="submit"
-                  className="bg-brand-emerald hover:bg-emerald-400 text-black font-semibold px-5 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm"
-                >
-                  <Send size={16} /> Post Comment
-                </button>
-              </div>
-            </form>
+          {reviews.length === 0 ? (
+            <p className="text-gray-400 text-sm">No community reviews found on TMDB for this title.</p>
           ) : (
-            <div className="bg-brand-surface border border-brand-hover p-4 rounded-xl mb-8 text-center text-sm text-gray-400">
-              Please <Link to="/login" className="text-brand-emerald font-semibold underline">Sign In</Link> to leave a review or comment.
+            <div className="space-y-4">
+              {reviews.slice(0, visibleReviewsCount).map(rev => (
+                <div key={rev.id} className="bg-brand-surface/60 border border-brand-hover/60 p-5 rounded-2xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-bold text-sm text-brand-emerald flex items-center gap-2">
+                      @{rev.author}
+                      {rev.author_details?.rating && (
+                        <span className="bg-brand-emerald/20 text-brand-emerald text-xs px-2 py-0.5 rounded font-semibold">
+                          ★ {rev.author_details.rating} / 10
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(rev.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p className="text-gray-300 text-sm leading-relaxed line-clamp-6">
+                    {rev.content}
+                  </p>
+                </div>
+              ))}
+
+              {visibleReviewsCount < reviews.length && (
+                <div className="text-center pt-4">
+                  <button
+                    onClick={() => setVisibleReviewsCount(prev => prev + 3)}
+                    className="px-6 py-2.5 bg-brand-surface hover:bg-brand-hover border border-brand-hover text-white font-bold rounded-xl transition-colors text-sm cursor-pointer shadow-md"
+                  >
+                    Load More Reviews ({reviews.length - visibleReviewsCount} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
-
-          <div className="space-y-4">
-            {comments.map(c => (
-              <div key={c.id} className="bg-brand-surface/60 border border-brand-hover/60 p-4 rounded-xl">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-sm text-brand-emerald">@{c.user}</span>
-                  <span className="text-xs text-gray-500">{c.date}</span>
-                </div>
-                <p className="text-gray-300 text-sm">{c.text}</p>
-              </div>
-            ))}
-          </div>
         </div>
 
-        {/* SIMILAR */}
-        {similar.length > 0 && (
+        {/* SIMILAR (Relevance-Enhanced & Auto Infinite Scroll) */}
+        {similarMovies.length > 0 && (
           <div className="mt-14 mb-12">
             <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
               <span className="w-1 h-6 bg-brand-emerald rounded-full"></span>
               You Might Also Like
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 lg:grid-cols-5 gap-4">
-              {similar.map(m => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {similarMovies.map(m => (
                 <MovieCard key={m.id} movie={{
                   id: String(m.id),
                   title: m.title || m.name,
@@ -289,6 +336,12 @@ export default function MovieDetails() {
                 }} />
               ))}
             </div>
+
+            {loadingSimilar && (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-emerald"></div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -2,29 +2,52 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 import MovieCard from '../components/MovieCard';
+import { useAuth } from '../context/AuthContext';
 import { Play, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ALL_CATEGORIES = [
-  { title: '🔥 Trending This Week', fetch: () => fetchMovies.fetchTrending() },
-  { title: '🎬 Hollywood Blockbusters', fetch: () => fetchMovies.fetchActionMovies() },
-  { title: '💃 Bollywood Hits', fetch: () => fetchMovies.fetchBollywood() },
-  { title: '🍿 Top Rated Movies', fetch: () => fetchMovies.fetchTopRated() },
-  { title: '🔪 Horror & Thrillers', fetch: () => fetchMovies.fetchHorrorMovies() },
-  { title: '😂 Comedy Hits', fetch: () => fetchMovies.fetchComedyMovies() },
-  { title: '💕 Romance & Drama', fetch: () => fetchMovies.fetchRomanceMovies() },
-  { title: '🎌 Japanese Anime', fetch: () => fetchMovies.fetchAnime() },
-  { title: '📺 Netflix Originals', fetch: () => fetchMovies.fetchNetflixOriginals() },
-  { title: '🎙️ Documentaries', fetch: () => fetchMovies.fetchDocumentaries() },
-  { title: '✨ You May Also Like', fetch: () => fetchMovies.fetchTopRated() },
+  { title: 'Trending This Week', fetch: () => fetchMovies.fetchTrending() },
+  { title: 'Hollywood Blockbusters', fetch: () => fetchMovies.fetchActionMovies() },
+  { title: 'Bollywood Hits', fetch: () => fetchMovies.fetchBollywood() },
+  { title: 'Bangla Movies', fetch: () => fetchMovies.fetchBangla() },
+  { title: 'Bangla TV Series', fetch: () => fetchMovies.fetchBanglaTv() },
+  { title: 'Top Rated Movies', fetch: () => fetchMovies.fetchTopRated() },
+  { title: 'Horror & Thrillers', fetch: () => fetchMovies.fetchHorrorMovies() },
+  { title: 'Comedy Hits', fetch: () => fetchMovies.fetchComedyMovies() },
+  { title: 'Romance & Drama', fetch: () => fetchMovies.fetchRomanceMovies() },
+  { title: 'Japanese Anime', fetch: () => fetchMovies.fetchAnime() },
+  { title: 'Netflix Originals', fetch: () => fetchMovies.fetchNetflixOriginals() },
+  { title: 'Documentaries', fetch: () => fetchMovies.fetchDocumentaries() },
+  { title: '18+ Movies', fetch: () => fetchMovies.fetchAdult() },
+  { title: 'You May Also Like', fetch: () => fetchMovies.fetchTopRated(), isVerticalGrid: true },
 ];
 
-function MovieRow({ title, fetchFn }) {
+function MovieRow({ title, fetchFn, index = 0 }) {
   const [items, setItems] = useState([]);
   const scrollRef = useRef(null);
 
   useEffect(() => {
     fetchFn().then(res => setItems(res.data.results || [])).catch(() => {});
   }, [fetchFn]);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    const speeds = [3500, 5200, 4300, 6000, 4700, 5400, 4100];
+    const delay = speeds[index % speeds.length];
+
+    const interval = setInterval(() => {
+      if (scrollRef.current) {
+        const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+        const cardWidth = 200;
+        if (scrollLeft + clientWidth >= scrollWidth - 20) {
+          scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+        } else {
+          scrollRef.current.scrollBy({ left: cardWidth, behavior: 'smooth' });
+        }
+      }
+    }, delay);
+    return () => clearInterval(interval);
+  }, [items, index]);
 
   const scroll = (dir) => {
     scrollRef.current.scrollBy({ left: dir * 700, behavior: 'smooth' });
@@ -65,13 +88,103 @@ function MovieRow({ title, fetchFn }) {
   );
 }
 
+function VerticalMovieGrid({ title, fetchFn }) {
+  const [items, setItems] = useState([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    fetchFn().then(res => setItems(res.data.results || [])).catch(() => {});
+  }, [fetchFn]);
+
+  const loadMore = () => {
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    fetchMovies.fetchDiscover({ page: nextPage })
+      .then(res => {
+        setItems(prev => [...prev, ...(res.data.results || [])]);
+        setPage(nextPage);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  };
+
+  if (!items.length) return null;
+
+  return (
+    <section className="mb-12 mt-10">
+      <h2 className="text-xl sm:text-2xl font-bold text-white mb-6 pl-2 flex items-center gap-2">
+        <span className="w-1.5 h-6 bg-brand-emerald rounded-full"></span>
+        {title}
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6">
+        {items.map((movie, idx) => (
+          <MovieCard key={`${movie.id}-${idx}`} movie={{
+            id: String(movie.id),
+            title: movie.title || movie.name,
+            posterUrl: getImageUrl(movie.poster_path, 'w500'),
+            backdropUrl: getImageUrl(movie.backdrop_path, 'original'),
+            rating: movie.vote_average,
+            releaseDate: movie.release_date || movie.first_air_date,
+            mediaType: movie.media_type || (movie.name ? 'tv' : 'movie'),
+          }} />
+        ))}
+      </div>
+      <div className="text-center mt-8">
+        <button
+          onClick={loadMore}
+          disabled={loadingMore}
+          className="px-6 py-3 bg-brand-surface hover:bg-brand-hover border border-brand-hover text-white font-bold rounded-xl transition-colors shadow-lg cursor-pointer"
+        >
+          {loadingMore ? 'Loading more movies...' : 'Load More Movies'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function WatchHistoryRow({ watchHistory }) {
+  const scrollRef = useRef(null);
+  const scroll = (dir) => {
+    scrollRef.current.scrollBy({ left: dir * 700, behavior: 'smooth' });
+  };
+
+  if (!watchHistory || watchHistory.length === 0) return null;
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-lg sm:text-xl font-bold text-white mb-3 pl-2 flex items-center gap-2">
+        <span className="w-1 h-5 bg-brand-emerald rounded-full"></span>
+        Watching Now
+      </h2>
+      <div className="relative group">
+        <button onClick={() => scroll(-1)} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 text-white p-2.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-brand-emerald hover:text-black shadow-lg">
+          <ChevronLeft size={22} />
+        </button>
+        <div ref={scrollRef} className="flex overflow-x-auto space-x-3 sm:space-x-4 pb-4 pt-1 px-2 -mx-2 scrollbar-hide snap-x">
+          {watchHistory.map(movie => (
+            <div key={movie.id} className="min-w-[130px] sm:min-w-[160px] md:min-w-[190px] w-[130px] sm:w-[160px] md:w-[190px] snap-start flex-shrink-0">
+              <MovieCard movie={movie} />
+            </div>
+          ))}
+        </div>
+        <button onClick={() => scroll(1)} className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/80 text-white p-2.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-brand-emerald hover:text-black shadow-lg">
+          <ChevronRight size={22} />
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export default function Home({ type = 'all' }) {
   const [heroList, setHeroList] = useState([]);
   const [heroIndex, setHeroIndex] = useState(0);
-  const [visibleRowsCount,setVisibleRowsCount] = useState(4); // Infinite scrolling pagination
+  const [heroPaused, setHeroPaused] = useState(false);
+  const [visibleRowsCount, setVisibleRowsCount] = useState(4); // Infinite scrolling pagination
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const location = useLocation();
+  const { watchHistory } = useAuth();
 
   const searchQuery = new URLSearchParams(location.search).get('search');
 
@@ -91,14 +204,14 @@ export default function Home({ type = 'all' }) {
     }
   }, [searchQuery]);
 
-  // Slideshow timer for Banner (changes every 2 seconds as requested)
+  // Slideshow timer for Banner (changes every 4 seconds, pauses on hover)
   useEffect(() => {
-    if (heroList.length === 0 || searchQuery) return;
+    if (heroList.length === 0 || searchQuery || heroPaused) return;
     const interval = setInterval(() => {
       setHeroIndex(prev => (prev + 1) % heroList.length);
-    }, 2000);
+    }, 4000);
     return () => clearInterval(interval);
-  }, [heroList, searchQuery]);
+  }, [heroList, searchQuery, heroPaused]);
 
   // Infinite scroll trigger when reaching bottom of page
   useEffect(() => {
@@ -158,7 +271,11 @@ export default function Home({ type = 'all' }) {
     <div className="min-h-screen bg-brand-background">
       {/* ANIMATED SLIDESHOW HERO BANNER */}
       {!searchQuery && hero && (
-        <div className="relative w-full h-[60vh] sm:h-[75vh] md:h-[85vh] flex items-end md:items-center overflow-hidden">
+        <div
+          onMouseEnter={() => setHeroPaused(true)}
+          onMouseLeave={() => setHeroPaused(false)}
+          className="relative w-full h-[60vh] sm:h-[75vh] md:h-[85vh] flex items-end md:items-center overflow-hidden"
+        >
           <div className="absolute inset-0">
             <img
               key={hero.id}
@@ -171,13 +288,13 @@ export default function Home({ type = 'all' }) {
           </div>
 
           {/* Manual Left/Right Hero controls */}
-          <button 
+          <button
             onClick={() => setHeroIndex(prev => (prev - 1 + heroList.length) % heroList.length)}
             className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full hover:bg-brand-emerald hover:text-black transition-colors hidden sm:block"
           >
             <ChevronLeft size={24} />
           </button>
-          <button 
+          <button
             onClick={() => setHeroIndex(prev => (prev + 1) % heroList.length)}
             className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 text-white p-3 rounded-full hover:bg-brand-emerald hover:text-black transition-colors hidden sm:block"
           >
@@ -224,10 +341,15 @@ export default function Home({ type = 'all' }) {
         </div>
       )}
 
-      {/* CATEGORY ROWS WITH INFINITE SCROLLING */}
-      <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 pb-24 ${!searchQuery && hero ? '-mt-24 relative z-20' : 'pt-8'}`}>
+      {/* CATEGORY ROWS & VERTICAL GRID */}
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 pb-24 pt-6">
+        {!searchQuery && <WatchHistoryRow watchHistory={watchHistory} />}
         {activeRows.map((row, i) => (
-          <MovieRow key={i} title={row.title} fetchFn={row.fetch} />
+          row.isVerticalGrid ? (
+            <VerticalMovieGrid key={i} title={row.title} fetchFn={row.fetch} />
+          ) : (
+            <MovieRow key={i} index={i} title={row.title} fetchFn={row.fetch} />
+          )
         ))}
 
         {visibleRowsCount < categories.length && (

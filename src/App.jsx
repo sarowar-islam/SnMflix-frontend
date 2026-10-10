@@ -8,6 +8,7 @@ import WatchPage from './views/WatchPage';
 import Login from './views/Login';
 import Watchlist from './views/Watchlist';
 import Favorites from './views/Favorites';
+import CategoryPage from './views/CategoryPage';
 
 const NotFound = () => <div className="p-8 text-center text-white text-2xl mt-20">404 - Not Found</div>;
 
@@ -33,6 +34,7 @@ function App() {
           <Route path="/login" element={<MainLayout><Login /></MainLayout>} />
           <Route path="/watchlist" element={<MainLayout><Watchlist /></MainLayout>} />
           <Route path="/favorites" element={<MainLayout><Favorites /></MainLayout>} />
+          <Route path="/category/:category" element={<MainLayout><CategoryPage /></MainLayout>} />
 
           {/* Standalone full-screen routes */}
           <Route path="/watch/:id" element={<WatchPage />} />
