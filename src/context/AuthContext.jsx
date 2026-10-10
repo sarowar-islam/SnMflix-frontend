@@ -7,7 +7,8 @@ import {
   getList,
   toggleInList,
   isInList,
-  addToWatchHistory
+  addToWatchHistory,
+  removeFromWatchHistory
 } from '../utils/storage';
 import api from '../utils/api';
 
@@ -80,6 +81,11 @@ export const AuthProvider = ({ children }) => {
     setWatchHistory(newList);
   };
 
+  const removeHistory = (id) => {
+    const newList = removeFromWatchHistory(id);
+    setWatchHistory(newList);
+  };
+
   const isWatchlist = (id) => isInList(STORAGE_KEYS.WATCHLIST, id);
   const isFavorite = (id) => isInList(STORAGE_KEYS.FAVORITES, id);
 
@@ -95,6 +101,7 @@ export const AuthProvider = ({ children }) => {
       toggleWatchlist,
       toggleFavorite,
       addHistory,
+      removeHistory,
       isWatchlist,
       isFavorite,
     }}>

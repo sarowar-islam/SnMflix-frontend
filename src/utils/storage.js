@@ -47,6 +47,13 @@ export const addToWatchHistory = (item) => {
   return newList;
 };
 
+export const removeFromWatchHistory = (id) => {
+  const list = getList(STORAGE_KEYS.WATCH_HISTORY);
+  const newList = list.filter(i => String(i.id) !== String(id));
+  saveList(STORAGE_KEYS.WATCH_HISTORY, newList);
+  return newList;
+};
+
 export const isInList = (key, id) => {
   const list = getList(key);
   return list.some(item => item.id === id);

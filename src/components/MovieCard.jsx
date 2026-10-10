@@ -1,9 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Heart, Plus, Check } from 'lucide-react';
+import { Play, Heart, Plus, Check, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function MovieCard({ movie }) {
+export default function MovieCard({ movie, onRemove }) {
   const { isWatchlist, isFavorite, toggleWatchlist, toggleFavorite } = useAuth();
   const navigate = useNavigate();
 
@@ -52,6 +52,21 @@ export default function MovieCard({ movie }) {
           <span className="absolute top-2 left-2 bg-black/70 backdrop-blur-md text-yellow-400 text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
             ★ {parseFloat(movie.rating).toFixed(1)}
           </span>
+        )}
+
+        {/* Remove button for Watch History */}
+        {onRemove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onRemove(movie.id);
+            }}
+            className="absolute top-2 right-2 bg-black/70 hover:bg-red-600 text-white p-1.5 rounded-full transition-colors z-20 shadow-md cursor-pointer"
+            title="Remove from Watching Now"
+          >
+            <X size={14} />
+          </button>
         )}
 
         {/* Quick action overlay on hover (Desktop) */}

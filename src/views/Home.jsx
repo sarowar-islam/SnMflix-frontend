@@ -143,7 +143,7 @@ function VerticalMovieGrid({ title, fetchFn }) {
   );
 }
 
-function WatchHistoryRow({ watchHistory }) {
+function WatchHistoryRow({ watchHistory, onRemoveHistory }) {
   const scrollRef = useRef(null);
   const scroll = (dir) => {
     scrollRef.current.scrollBy({ left: dir * 700, behavior: 'smooth' });
@@ -164,7 +164,7 @@ function WatchHistoryRow({ watchHistory }) {
         <div ref={scrollRef} className="flex overflow-x-auto space-x-3 sm:space-x-4 pb-4 pt-1 px-2 -mx-2 scrollbar-hide snap-x">
           {watchHistory.map(movie => (
             <div key={movie.id} className="min-w-[130px] sm:min-w-[160px] md:min-w-[190px] w-[130px] sm:w-[160px] md:w-[190px] snap-start flex-shrink-0">
-              <MovieCard movie={movie} />
+              <MovieCard movie={movie} onRemove={onRemoveHistory} />
             </div>
           ))}
         </div>
@@ -184,7 +184,7 @@ export default function Home({ type = 'all' }) {
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const location = useLocation();
-  const { watchHistory } = useAuth();
+  const { watchHistory, removeHistory } = useAuth();
 
   const searchQuery = new URLSearchParams(location.search).get('search');
 
@@ -343,7 +343,7 @@ export default function Home({ type = 'all' }) {
 
       {/* CATEGORY ROWS & VERTICAL GRID */}
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 pb-24 pt-6">
-        {!searchQuery && <WatchHistoryRow watchHistory={watchHistory} />}
+        {!searchQuery && <WatchHistoryRow watchHistory={watchHistory} onRemoveHistory={removeHistory} />}
         {activeRows.map((row, i) => (
           row.isVerticalGrid ? (
             <VerticalMovieGrid key={i} title={row.title} fetchFn={row.fetch} />
