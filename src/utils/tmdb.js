@@ -123,61 +123,14 @@ export const fetchMovies = {
   fetchSeasonEpisodes: (id, seasonNumber) => tmdbApi.get(`/tv/${id}/season/${seasonNumber}`),
   searchMulti: async (query) => {
     try {
-      const cleanQuery = query.trim().toLowerCase();
+      const cleanQuery = query ? query.trim() : '';
       if (!cleanQuery) return { data: { results: [] } };
 
-      // 1. Standard TMDB search
+      // Standard TMDB search multi (proper search as used in movie streaming websites)
       const res = await tmdbApi.get(`/search/multi`, { params: { query: cleanQuery, include_adult: true } });
-      let results = res.data.results || [];
-
-      // 2. Query TMDB keywords to find matching tags (e.g. "aparaj" -> "aparajito")
-      const keywordRes = await tmdbApi.get(`/search/keyword`, { params: { query: cleanQuery } }).catch(() => ({ data: { results: [] } }));
-      const keywords = keywordRes.data.results || [];
-
-      let keywordMovieResults = [];
-      if (keywords.length > 0) {
-        const keywordIds = keywords.slice(0, 3).map(k => k.id).join(',');
-        const discoverRes = await tmdbApi.get(`/discover/movie`, {
-          params: { with_keywords: keywordIds, include_adult: true, page: 1 }
-        }).catch(() => ({ data: { results: [] } }));
-        keywordMovieResults = discoverRes.data.results || [];
-      }
-
-      // 3. Fetch broader pool (search movie, search tv, discover movie/tv)
-      const [discoverMovieRes, discoverTvRes, searchMovieRes, searchTvRes] = await Promise.all([
-        tmdbApi.get(`/discover/movie`, { params: { include_adult: true, sort_by: 'popularity.desc', page: 1 } }).catch(() => ({ data: { results: [] } })),
-        tmdbApi.get(`/discover/tv`, { params: { include_adult: true, sort_by: 'popularity.desc', page: 1 } }).catch(() => ({ data: { results: [] } })),
-        tmdbApi.get(`/search/movie`, { params: { query: cleanQuery, include_adult: true } }).catch(() => ({ data: { results: [] } })),
-        tmdbApi.get(`/search/tv`, { params: { query: cleanQuery, include_adult: true } }).catch(() => ({ data: { results: [] } }))
-      ]);
-
-      const allPool = [
-        ...results,
-        ...keywordMovieResults,
-        ...(searchMovieRes.data.results || []),
-        ...(searchTvRes.data.results || []),
-        ...(discoverMovieRes.data.results || []),
-        ...(discoverTvRes.data.results || [])
-      ];
-
-      // Filter by substring inclusion or word prefix matching (e.g., "aparaj" matches "aparajito")
-      let matched = allPool.filter(item => {
-        const title = (item.title || item.name || item.original_title || '').toLowerCase();
-        if (title.includes(cleanQuery)) return true;
-        const words = title.split(/\s+/);
-        return words.some(w => w.startsWith(cleanQuery));
-      });
-
-      const uniqueMap = new Map();
-      matched.forEach(m => {
-        if (m.id && (m.poster_path || m.profile_path) && !uniqueMap.has(m.id)) {
-          uniqueMap.set(m.id, m);
-        }
-      });
-
-      return { data: { results: Array.from(uniqueMap.values()) } };
+      return res;
     } catch (e) {
-      return tmdbApi.get(`/search/multi`, { params: { query, include_adult: true } });
+      return { data: { results: [] } };
     }
   },
 };
