@@ -189,9 +189,6 @@ const WatchTogetherRoom = () => {
   // Helper to reliably ensure player autoplays across delays/buffering
   const triggerAutoPlay = () => {
     sendPlayerCommand('play');
-    setTimeout(() => sendPlayerCommand('play'), 200);
-    setTimeout(() => sendPlayerCommand('play'), 500);
-    setTimeout(() => sendPlayerCommand('play'), 1000);
   };
 
   // ─── Listen for postMessage PLAYER_EVENT from the player iframe ───
