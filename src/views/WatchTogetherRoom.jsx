@@ -956,12 +956,15 @@ const WatchTogetherRoom = () => {
                   }}
                 />
 
-                {/* Controller screen blocking for non-admin participants (blocks bottom timeline/seekbar only) */}
+                {/* Controller screen blocking for non-admin participants (blocks entire video player overlay) */}
                 {!isOwner && (
                   <div
-                    className="absolute inset-x-0 bottom-0 h-16 z-10 cursor-not-allowed select-none bg-transparent"
-                    title="Timeline controls are reserved for the room admin"
-                    onClick={(e) => { e.stopPropagation(); }}
+                    className="absolute inset-0 z-20 cursor-not-allowed select-none bg-transparent"
+                    title="Playback controls are reserved for the room admin"
+                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                    onMouseUp={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                    onTouchStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
                   />
                 )}
               </div>
