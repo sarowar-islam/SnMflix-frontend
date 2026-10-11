@@ -39,9 +39,33 @@ export default function VideoPlayer({ playUrl, posterUrl, title }) {
     playUrl.includes('2embed') ||
     playUrl.includes('autoembed') ||
     playUrl.includes('smashystream') ||
+    playUrl.includes('vidzee.wtf') ||
+    playUrl.includes('vidrock.to') ||
+    playUrl.includes('vidstorm.to') ||
+    playUrl.includes('melopee.app') ||
     playUrl.includes('iframe') ||
     (!playUrl.endsWith('.mp4') && !playUrl.endsWith('.m3u8'))
   );
+
+  // Listen for VidZee postMessage events (MEDIA_DATA & PLAYER_EVENT)
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.origin !== 'https://player.vidzee.wtf') return;
+
+      if (event.data?.type === 'MEDIA_DATA') {
+        const mediaData = event.data.data;
+        try {
+          localStorage.setItem('vidZeeProgress', JSON.stringify(mediaData));
+        } catch (err) {}
+      } else if (event.data?.type === 'PLAYER_EVENT') {
+        const { event: eventType, currentTime, duration, tmdbId, mediaType, season, episode } = event.data.data || {};
+        // Player event received from VidZee embed
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   useEffect(() => {
     if (isEmbed) {

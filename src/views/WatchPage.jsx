@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Tv, Check, Download, Star, Calendar, Clock } from 'lucide-react';
+import { ArrowLeft, Tv, Check, Star, Calendar, Clock, Server } from 'lucide-react';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 import { useAuth } from '../context/AuthContext';
 import VideoPlayer from '../components/VideoPlayer';
@@ -17,20 +17,70 @@ export default function WatchPage() {
 
   const mediaType = searchParams.get('type') || 'movie';
 
-  // Server selection locked to Server 1 (player.melopee.app)
-  const selectedServer = 1;
+  const [selectedServer, setSelectedServer] = useState(1);
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
   const [episodes, setEpisodes] = useState([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
 
-  const serversList = [
-    {
-      id: 1,
-      name: 'Server 1 (player.melopee.app - Recommended)',
-      urlFn: (id, s, e, type) => type === 'tv' ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=${s}&episode=${e}` : `https://player.melopee.app/embed/movie?tmdb=${id}`
-    },
-  ];
+  // Check if movie/show is anime (original language is Japanese 'ja' or has Animation genre ID 16)
+  const isAnime = useMemo(() => {
+    if (!movie) return false;
+    const isJapanese = movie.original_language === 'ja';
+    const hasAnimationGenre = movie.genres?.some(g => g.id === 16);
+    return isJapanese || hasAnimationGenre;
+  }, [movie]);
+
+  const serversList = useMemo(() => {
+    const baseServers = [
+      {
+        key: 'vidzee',
+        name: 'Server 1',
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://player.vidzee.wtf/embed/tv/${id}/${s}/${e}?quality=auto` : `https://player.vidzee.wtf/embed/movie/${id}?quality=auto`
+      },
+      {
+        key: 'cinesrc',
+        name: 'Server 2',
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://cinesrc.st/embed/tv/${id}/${s}/${e}?quality=auto` : `https://cinesrc.st/embed/movie/${id}?quality=auto`
+      },
+      {
+        key: 'melopee',
+        name: 'Server 3',
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=${s}&episode=${e}&quality=auto` : `https://player.melopee.app/embed/movie?tmdb=${id}&quality=auto`
+      },
+      {
+        key: 'vidrock',
+        name: 'Server 4',
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://vidrock.to/embed/tv/${id}/${s}/${e}?quality=auto` : `https://vidrock.to/embed/movie/${id}?quality=auto`
+      },
+      {
+        key: 'vidstorm',
+        name: 'Server 5',
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://vidstorm.to/embed/tv/${id}/${s}/${e}?quality=auto` : `https://vidstorm.to/embed/movie/${id}?quality=auto`
+      },
+      {
+        key: 'embedmaster',
+        name: 'Server 6',
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://embedmaster.link/tv/${id}/${s}/${e}?quality=auto` : `https://embedmaster.link/movie/${id}?quality=auto`
+      },
+    ];
+
+    let list = [...baseServers];
+    // If anime, move cinesrc to last
+    if (isAnime) {
+      const cineIndex = list.findIndex(s => s.key === 'cinesrc');
+      if (cineIndex !== -1) {
+        const [cineServer] = list.splice(cineIndex, 1);
+        list.push(cineServer);
+      }
+    }
+
+    return list.map((srv, index) => ({
+      ...srv,
+      id: index + 1,
+      name: `Server ${index + 1}`
+    }));
+  }, [isAnime]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -97,7 +147,7 @@ export default function WatchPage() {
   }, [id, mediaType, selectedSeason]);
 
   const getPlayUrl = () => {
-    const srv = serversList[0];
+    const srv = serversList.find(s => s.id === selectedServer) || serversList[0];
     return srv.urlFn(id, selectedSeason, selectedEpisode, mediaType);
   };
 
@@ -145,6 +195,34 @@ export default function WatchPage() {
             posterUrl={movie ? getImageUrl(movie.backdrop_path || movie.poster_path, 'original') : ''}
             title={movie?.title || movie?.name}
           />
+
+          {/* Server Selector Bar Below Video */}
+          <div className="bg-brand-surface border border-brand-hover p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-brand-emerald/10 text-brand-emerald">
+                <Server size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">Select Server</h3>
+                <p className="text-xs text-gray-400">Switch source if playback fails</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              {serversList.map(srv => (
+                <button
+                  key={srv.id}
+                  onClick={() => setSelectedServer(srv.id)}
+                  className={`flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                    selectedServer === srv.id
+                      ? 'bg-brand-emerald text-black shadow-lg shadow-brand-emerald/20 font-extrabold'
+                      : 'bg-brand-background text-gray-300 hover:bg-brand-hover border border-brand-hover'
+                  }`}
+                >
+                  {srv.name}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* TV Series Episode Playlist Selector */}
           {mediaType === 'tv' && (
@@ -223,7 +301,7 @@ export default function WatchPage() {
           <div className="bg-brand-surface border border-brand-hover p-6 rounded-2xl flex flex-col gap-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-               
+
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
                   {movie.title || movie.name}
                 </h1>
