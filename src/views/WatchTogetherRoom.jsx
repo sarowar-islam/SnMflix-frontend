@@ -359,6 +359,10 @@ const WatchTogetherRoom = () => {
           const { season, episode } = extractTvInfo(roomData.currentMovieUrl);
           const initialUrl = buildMelopeeUrl(movieId, mediaType, currentTime, season, episode);
           setIframeSrc(initialUrl);
+
+          // Initialize last known admin time for new members
+          lastServerAdminTimeRef.current = currentTime;
+          lastServerPlayingRef.current = roomData.isPlaying;
         }
 
         if (user && (roomData.ownerId === user.id || roomData.participants?.some(p => p.userId === user.id && p.isAdmin))) {
@@ -522,6 +526,43 @@ const WatchTogetherRoom = () => {
 
     return () => clearInterval(interval);
   }, [roomCode, myParticipant, isAdmin, participants.length, navigate, iframeSrc, room]);
+
+  // Immediate sync for new members joining mid-playback
+  useEffect(() => {
+    if (!myParticipant || myParticipant.status !== 'APPROVED' || isAdmin || !iframeSrc) return;
+
+    // Wait for iframe to load, then do an immediate sync check
+    const timer = setTimeout(async () => {
+      try {
+        const syncRes = await api.get(`/rooms/${roomCode}/sync`);
+        const serverRoom = syncRes.data.room;
+
+        if (serverRoom && serverRoom.currentMovieUrl) {
+          const serverTime = serverRoom.currentTime || 0;
+          const initialTime = lastServerAdminTimeRef.current || 0;
+          const drift = Math.abs(serverTime - initialTime);
+
+          // If there's significant drift, immediately seek to catch up
+          if (drift > 3) {
+            console.log('[Initial Sync] Catching up to admin position:', serverTime, 'seconds (drift:', drift, 's)');
+            setTimeout(() => {
+              sendPlayerCommand(`seek${Math.floor(serverTime)}`);
+              if (serverRoom.isPlaying) {
+                triggerAutoPlay();
+              }
+            }, 2000); // Wait 2 seconds for iframe to fully load
+          }
+
+          lastServerAdminTimeRef.current = serverTime;
+          lastServerPlayingRef.current = serverRoom.isPlaying;
+        }
+      } catch (err) {
+        console.error('[Initial Sync] Failed:', err);
+      }
+    }, 1000); // Wait 1 second after component mounts
+
+    return () => clearTimeout(timer);
+  }, [myParticipant?.status, isAdmin, iframeSrc, roomCode]);
 
   // Fetch trending movies for admin selection
   useEffect(() => {
