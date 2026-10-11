@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Film, User, LogOut, Heart, Library, Search, Menu, X, Clock, Star, Home, Tv, Sparkles, Award, Globe, Bookmark, ShieldAlert } from 'lucide-react';
+import { Film, User, LogOut, Heart, Library, Search, Menu, X, Clock, Star, Home, Tv, Sparkles, Award, Globe, Bookmark, ShieldAlert, Users } from 'lucide-react';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -207,8 +207,17 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* Right Side: User Profile / Watchlist / Favorites / Auth */}
-            <div className="flex items-center gap-3">
+            {/* Right Side: User Profile / Watchlist / Favorites / Watch Together / Auth */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link
+                to="/watch-together"
+                className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-emerald/10 hover:bg-brand-emerald/20 border border-brand-emerald/30 text-brand-emerald transition-colors text-xs font-bold"
+                title="Watch Together"
+              >
+                <Users size={16} />
+                <span>Watch Together</span>
+              </Link>
+
               <Link
                 to="/watchlist"
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover text-gray-300 hover:text-white transition-colors text-xs font-semibold"
@@ -227,20 +236,24 @@ export default function Navbar() {
                 <span className="hidden lg:inline">Favorites</span>
               </Link>
 
-              {/* {user ? (
+              {user ? (
                 <div className="relative group">
-                  <button className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover transition-colors">
+                  <button className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover transition-colors cursor-pointer">
                     <div className="w-7 h-7 rounded-full bg-brand-emerald text-black flex items-center justify-center font-bold text-xs">
                       {user.username?.charAt(0).toUpperCase() || 'U'}
                     </div>
                     <span className="hidden md:inline text-xs font-bold text-white truncate max-w-[100px]">{user.username}</span>
                   </button>
 
-                  <div className="absolute right-0 mt-2 w-48 bg-brand-surface border border-brand-hover rounded-2xl shadow-2xl py-2 hidden group-hover:block z-50">
+                  <div className="absolute right-0 mt-2 w-56 bg-brand-surface border border-brand-hover rounded-2xl shadow-2xl py-2 hidden group-hover:block z-50">
                     <div className="px-4 py-2 border-b border-brand-hover">
-                      <p className="text-xs text-gray-400">Signed in as</p>
+                      <p className="text-[11px] text-gray-400">Signed in as</p>
                       <p className="text-xs font-bold text-white truncate">{user.username}</p>
+                      <p className="text-[10px] text-brand-emerald mt-1 font-semibold">Rooms Created: {user.roomCount || 0}</p>
                     </div>
+                    <Link to="/watch-together" className="flex items-center gap-2 px-4 py-2 text-xs text-brand-emerald font-bold hover:bg-brand-hover md:hidden">
+                      <Users size={14} /> Watch Together
+                    </Link>
                     <Link to="/watchlist" className="flex items-center gap-2 px-4 py-2 text-xs text-gray-300 hover:bg-brand-hover hover:text-white md:hidden">
                       <Library size={14} /> Watchlist
                     </Link>
@@ -256,10 +269,13 @@ export default function Navbar() {
                   </div>
                 </div>
               ) : (
-                <div className="bg-brand-emerald/10 border border-brand-emerald/40 text-brand-emerald font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-brand-emerald animate-pulse"></span> Free Streaming
-                </div>
-              )} */}
+                <Link
+                  to="/login"
+                  className="px-3.5 py-2 rounded-xl bg-brand-emerald text-black hover:bg-emerald-400 transition-colors font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-brand-emerald/20"
+                >
+                  <User size={14} /> Sign In
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -292,6 +308,13 @@ export default function Navbar() {
 
             {/* Links */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#121212]">
+              <Link
+                to="/watch-together"
+                onClick={() => setIsMoreOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-brand-emerald/10 border border-brand-emerald/30 text-brand-emerald hover:bg-brand-emerald/20 font-bold transition-colors"
+              >
+                <Users size={18} /> Watch Together (New)
+              </Link>
               <Link
                 to="/"
                 onClick={() => setIsMoreOpen(false)}

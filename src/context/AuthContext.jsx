@@ -31,6 +31,17 @@ export const AuthProvider = ({ children }) => {
     setWatchHistory(getList(STORAGE_KEYS.WATCH_HISTORY));
 
     if (authList.token) {
+      api.get('/auth/me')
+        .then(res => {
+          if (res.data) {
+            setUser(res.data);
+          }
+        })
+        .catch(() => {
+          // Token might be invalid or expired
+          logout();
+        });
+
       api.get('/users/me/watchlist')
         .then(res => {
           if (res.data && Array.isArray(res.data)) {
@@ -56,6 +67,15 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setToken(null);
     clearAuthData();
+    api.post('/auth/logout').catch(() => {});
+  };
+
+  const updateUserRoomCount = (newCount) => {
+    if (user) {
+      const updated = { ...user, roomCount: newCount };
+      setUser(updated);
+      setAuthData(updated, token);
+    }
   };
 
   const toggleWatchlist = (item) => {
@@ -95,6 +115,7 @@ export const AuthProvider = ({ children }) => {
       token,
       login,
       logout,
+      updateUserRoomCount,
       watchlist,
       favorites,
       watchHistory,

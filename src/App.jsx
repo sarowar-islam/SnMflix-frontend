@@ -9,6 +9,8 @@ import Login from './views/Login';
 import Watchlist from './views/Watchlist';
 import Favorites from './views/Favorites';
 import CategoryPage from './views/CategoryPage';
+import WatchTogetherLobby from './views/WatchTogetherLobby';
+import WatchTogetherRoom from './views/WatchTogetherRoom';
 
 const NotFound = () => <div className="p-8 text-center text-white text-2xl mt-20">404 - Not Found</div>;
 
@@ -29,12 +31,16 @@ function App() {
           <Route path="/" element={<MainLayout><Home type="all" /></MainLayout>} />
           <Route path="/movies" element={<MainLayout><Home type="movies" /></MainLayout>} />
           <Route path="/tv" element={<MainLayout><Home type="tv" /></MainLayout>} />
-          
+
           <Route path="/movie/:id" element={<MainLayout><MovieDetails /></MainLayout>} />
           <Route path="/login" element={<MainLayout><Login /></MainLayout>} />
           <Route path="/watchlist" element={<MainLayout><Watchlist /></MainLayout>} />
           <Route path="/favorites" element={<MainLayout><Favorites /></MainLayout>} />
           <Route path="/category/:category" element={<MainLayout><CategoryPage /></MainLayout>} />
+
+          {/* Watch Together Routes */}
+          <Route path="/watch-together" element={<MainLayout><WatchTogetherLobby /></MainLayout>} />
+          <Route path="/watch-together/:roomCode" element={<WatchTogetherRoom />} />
 
           {/* Standalone full-screen routes */}
           <Route path="/watch/:id" element={<WatchPage />} />

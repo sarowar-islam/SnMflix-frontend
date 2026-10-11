@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 import { useAuth } from '../context/AuthContext';
 import MovieCard from '../components/MovieCard';
-import { Play, Heart, Plus, Check, Star, Calendar, Clock, ArrowLeft, MessageSquare } from 'lucide-react';
+import { Play, Heart, Plus, Check, Star, Calendar, Clock, ArrowLeft, MessageSquare, Users } from 'lucide-react';
+import api from '../utils/api';
 
 export default function MovieDetails() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const mediaType = searchParams.get('type') || 'movie';
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
   const [visibleReviewsCount, setVisibleReviewsCount] = useState(2);
+
+  const activeRoomCode = localStorage.getItem('active_watch_together_room');
 
   const [similarMovies, setSimilarMovies] = useState([]);
   const [similarPage, setSimilarPage] = useState(1);
@@ -221,13 +225,38 @@ export default function MovieDetails() {
 
             {/* ACTION BUTTONS */}
             <div className="flex flex-wrap gap-3 mb-8">
-              <Link
-                to={`/watch/${id}?type=${mediaType}`}
-                className="bg-brand-emerald hover:bg-emerald-400 text-black font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-brand-emerald/20"
-              >
-                <Play size={20} fill="currentColor" />
-                Play Now
-              </Link>
+              {activeRoomCode ? (
+                <button
+                  onClick={async () => {
+                    const embedUrl = mediaType === 'tv'
+                      ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=1&episode=1&quality=auto`
+                      : `https://player.melopee.app/embed/movie?tmdb=${id}&quality=auto`;
+                    try {
+                      await api.post(`/rooms/${activeRoomCode}/playback`, {
+                        currentMovieUrl: embedUrl,
+                        isPlaying: true,
+                        currentTime: 0,
+                        playbackSpeed: 1.0
+                      });
+                      navigate(`/watch-together/${activeRoomCode}`);
+                    } catch (e) {
+                      alert('Failed to start movie in watch together room');
+                    }
+                  }}
+                  className="bg-brand-emerald hover:bg-emerald-400 text-black font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-brand-emerald/20 cursor-pointer"
+                >
+                  <Users size={20} />
+                  Play in Watch Together Room
+                </button>
+              ) : (
+                <Link
+                  to={`/watch/${id}?type=${mediaType}`}
+                  className="bg-brand-emerald hover:bg-emerald-400 text-black font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-brand-emerald/20"
+                >
+                  <Play size={20} fill="currentColor" />
+                  Play Now
+                </Link>
+              )}
               <button
                 onClick={() => toggleWatchlist(movieForCard)}
                 className={`flex items-center gap-2 px-5 py-3 rounded-xl font-semibold transition-colors border ${isWatchlist(String(id)) ? 'bg-brand-sage/20 border-brand-sage text-brand-sage' : 'bg-brand-surface border-brand-hover text-white hover:bg-brand-hover'}`}
