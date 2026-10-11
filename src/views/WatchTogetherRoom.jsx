@@ -57,9 +57,9 @@ const WatchTogetherRoom = () => {
   const adminStateRef = useRef({ progress: 0, status: 'paused' });
   const lastEmittedStatusRef = useRef('playing');
   const participantStateRef = useRef({ isPlaying: null, movieId: null });
+  const participantPlayerStatusRef = useRef('paused');
   const lastServerAdminTimeRef = useRef(null);
   const lastServerPlayingRef = useRef(null);
-
   const chatBoxRef = useRef(null);
   const isOwner = user && room && room.ownerId === user.id;
 
@@ -74,8 +74,22 @@ const WatchTogetherRoom = () => {
     if (!iframeRef.current?.contentWindow) return;
     try {
       const msg = { player: true, action };
+      const strMsg = JSON.stringify(msg);
       iframeRef.current.contentWindow.postMessage(msg, '*');
-      iframeRef.current.contentWindow.postMessage(JSON.stringify(msg), '*');
+      iframeRef.current.contentWindow.postMessage(strMsg, '*');
+
+      // Also forward to nested frames if accessible
+      try {
+        const frames = iframeRef.current.contentWindow.frames;
+        if (frames && frames.length) {
+          for (let i = 0; i < frames.length; i++) {
+            try {
+              frames[i].postMessage(msg, '*');
+              frames[i].postMessage(strMsg, '*');
+            } catch (innerErr) {}
+          }
+        }
+      } catch (fErr) {}
     } catch (e) {}
   };
 
@@ -89,6 +103,16 @@ const WatchTogetherRoom = () => {
       if (payload?.type !== 'PLAYER_EVENT') return;
 
       const { player_status, player_progress } = payload.data || {};
+
+      if (player_status && !isOwner) {
+        participantPlayerStatusRef.current = player_status;
+
+        // When participant player finishes seeking, automatically resume playback if admin is playing
+        if (roomRef.current?.isPlaying && player_status === 'seeked') {
+          sendPlayerCommand('play');
+        }
+      }
+
       if (typeof player_progress === 'number') {
         localProgressRef.current = player_progress;
 
@@ -118,7 +142,9 @@ const WatchTogetherRoom = () => {
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, [isOwner, roomCode]);
 
   // ─── ADMIN: Stream playback state periodically to backend while playing ───
@@ -240,13 +266,12 @@ const WatchTogetherRoom = () => {
                 }
               }
 
-              // 3) Admin jumped more than 9 seconds forward or backward (e.g. 10s forward, 10s backward, or seek)
-              // During normal playback, admin time advances by ~1s per second so NO SEEK is performed, allowing continuous playback!
+              // 3) Admin jumped / seeked to a new timestamp (> 8s jump)
               const currentAdminTime = serverRoom.currentTime || 0;
               const prevAdminTime = lastServerAdminTimeRef.current !== null ? lastServerAdminTimeRef.current : currentAdminTime;
               const timeJump = Math.abs(currentAdminTime - prevAdminTime);
 
-              if (timeJump > 9) {
+              if (timeJump > 8) {
                 sendPlayerCommand(`seek${Math.floor(currentAdminTime)}`);
                 if (serverRoom.isPlaying) {
                   sendPlayerCommand('play');
@@ -472,16 +497,22 @@ const WatchTogetherRoom = () => {
                   ref={iframeRef}
                   src={iframeSrc}
                   title="Watch Party Player"
-                  allow="accelerometer; autoplay *; clipboard-write; encrypted-media *; gyroscope; picture-in-picture; fullscreen *"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullScreen"
                   allowFullScreen
                   className="w-full h-full border-0"
+                  onLoad={() => {
+                    if (roomRef.current?.isPlaying) {
+                      sendPlayerCommand('play');
+                    }
+                  }}
                 />
 
-                {/* Controller screen blocking for non-admin participants (blocks timeline/seekbar at bottom) */}
+                {/* Controller screen blocking for non-admin participants (blocks bottom timeline/seekbar only) */}
                 {!isOwner && (
                   <div
                     className="absolute inset-x-0 bottom-0 h-16 z-10 cursor-not-allowed select-none bg-transparent"
                     title="Timeline controls are reserved for the room admin"
+                    onClick={(e) => { e.stopPropagation(); }}
                   />
                 )}
               </div>
