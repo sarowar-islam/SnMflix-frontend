@@ -1,9 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Film, Users, Shield, Search, ArrowLeft, Check, X, AlertCircle, Share2, Star, Tv, Play, ChevronDown, ChevronUp } from 'lucide-react';
+import { Film, Users, Shield, Search, ArrowLeft, Check, X, AlertCircle, Share2, Star, Tv, Play, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import api from '../utils/api';
-import { fetchMovies, getImageUrl } from '../utils/tmdb';
+import tmdbApi, { fetchMovies, getImageUrl } from '../utils/tmdb';
+
+const GENRES = [
+  { id: '', name: 'All Genres' },
+  { id: '28', name: 'Action', tvId: '10759' },
+  { id: '12', name: 'Adventure', tvId: '10759' },
+  { id: '16', name: 'Animation', tvId: '16' },
+  { id: '35', name: 'Comedy', tvId: '35' },
+  { id: '80', name: 'Crime', tvId: '80' },
+  { id: '99', name: 'Documentary', tvId: '99' },
+  { id: '18', name: 'Drama', tvId: '18' },
+  { id: '10751', name: 'Family', tvId: '10751' },
+  { id: '14', name: 'Fantasy', tvId: '10765' },
+  { id: '36', name: 'History', tvId: '18' },
+  { id: '27', name: 'Horror', tvId: '9648' },
+  { id: '10402', name: 'Music', tvId: '10767' },
+  { id: '9648', name: 'Mystery', tvId: '9648' },
+  { id: '10749', name: 'Romance', tvId: '18' },
+  { id: '878', name: 'Sci-Fi', tvId: '10765' },
+  { id: '53', name: 'Thriller', tvId: '9648' },
+  { id: '10752', name: 'War', tvId: '10768' },
+  { id: '37', name: 'Western', tvId: '37' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'popularity.desc', label: 'Most Popular' },
+  { value: 'vote_average.desc', label: 'Highest Rated' },
+  { value: 'primary_release_date.desc', label: 'Newest Release' },
+  { value: 'vote_count.desc', label: 'Most Voted' },
+];
+
+const YEARS = [
+  '',
+  '2026', '2025', '2024', '2023', '2022',
+  '2021', '2020', '2019', '2018', '2017',
+  '2016', '2015', '2014', '2012', '2010', '2000'
+];
+
+const TYPES = [
+  { value: 'all', label: 'All Titles' },
+  { value: 'movie', label: 'Movies' },
+  { value: 'tv', label: 'TV Series' },
+];
 
 const buildMelopeeUrl = (id, type = 'movie', startAt = 0, season = 1, episode = 1) => {
   const base = type === 'tv'
@@ -67,7 +109,18 @@ const WatchTogetherRoom = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
-  const [showBrowseView, setShowBrowseView] = useState(false);
+  const [showBrowseView, setShowBrowseView] = useState(true);
+
+  // Filter & Unlimited Browse States
+  const [selectedGenre, setSelectedGenre] = useState('');
+  const [selectedSort, setSelectedSort] = useState('popularity.desc');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [selectedType, setSelectedType] = useState('all');
+  const [browsePage, setBrowsePage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingBrowse, setLoadingBrowse] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const browseContainerRef = useRef(null);
 
   // TV Series Season & Episode state for active playing show
   const [currentTvDetails, setCurrentTvDetails] = useState(null);
@@ -278,27 +331,24 @@ const WatchTogetherRoom = () => {
         setParticipants(roomData.participants || []);
 
         const activeId = extractMovieId(roomData);
-        if (activeId) {
+        if (roomData.currentMovieUrl && activeId) {
           const mKey = getMediaKey(roomData);
           participantStateRef.current.mediaKey = mKey;
           participantStateRef.current.movieId = activeId;
           participantStateRef.current.isPlaying = roomData.isPlaying;
           const initialTime = roomData.currentTime || 0;
           let url = roomData.currentMovieUrl;
-          if (!url) {
-            const { season, episode } = extractTvInfo(roomData.currentMovieUrl);
-            url = buildMelopeeUrl(activeId, roomData.mediaType || 'movie', initialTime, season, episode);
-          } else if (initialTime > 2 && !url.includes('startAt=')) {
+          if (initialTime > 2 && !url.includes('startAt=')) {
             url = `${url}&startAt=${Math.floor(initialTime)}`;
           }
           setIframeSrc(url);
           localProgressRef.current = initialTime;
+          setShowBrowseView(false);
+        } else {
+          // Newly created room or no movie chosen yet: open movie selection screen directly
+          setIframeSrc('');
+          setShowBrowseView(true);
         }
-
-        try {
-          const recRes = await fetchMovies.fetchTrending(1);
-          if (isMounted) setRecommendations((recRes.data.results || []).filter(m => m.poster_path).slice(0, 16));
-        } catch (e) {}
 
         if (user && roomData.ownerId === user.id) {
           setMyParticipant({ name: user.username, status: 'APPROVED', isAdmin: true });
@@ -408,7 +458,11 @@ const WatchTogetherRoom = () => {
   }, [roomCode, myParticipant, user, isOwner, iframeSrc]);
 
   // TV Info helpers for currently playing show
-  const isCurrentTv = room?.mediaType === 'tv' || room?.currentMovieUrl?.includes('/embed/tv');
+  const isCurrentTv = Boolean(
+    room?.currentMovieUrl
+      ? room.currentMovieUrl.includes('/embed/tv')
+      : room?.mediaType === 'tv'
+  );
   const currentTvInfo = extractTvInfo(room?.currentMovieUrl);
 
   // Fetch show details (seasons, etc.) for the active show if it's TV
@@ -421,11 +475,15 @@ const WatchTogetherRoom = () => {
           const { season } = extractTvInfo(room.currentMovieUrl);
           setActiveSeason(season || 1);
         })
-        .catch(() => setCurrentTvDetails(null));
+        .catch(() => {
+          setCurrentTvDetails(null);
+          setSeasonEpisodes([]);
+        });
     } else {
       setCurrentTvDetails(null);
+      setSeasonEpisodes([]);
     }
-  }, [room?.movieId, room?.mediaType, room?.currentMovieUrl]);
+  }, [room?.movieId, room?.mediaType, room?.currentMovieUrl, isCurrentTv]);
 
   // Fetch episodes for the active season tab
   useEffect(() => {
@@ -436,8 +494,160 @@ const WatchTogetherRoom = () => {
         .then(res => setSeasonEpisodes(res.data.episodes || []))
         .catch(() => setSeasonEpisodes([]))
         .finally(() => setLoadingEpisodes(false));
+    } else {
+      setSeasonEpisodes([]);
     }
   }, [room?.movieId, isCurrentTv, activeSeason]);
+
+  // ─── Fetch Browse Items from TMDB with Genre, Sort, Year, Type, and Unlimited Pagination ───
+  const fetchBrowseItems = async (pageNum, genre, sort, year, type) => {
+    try {
+      const genreObj = GENRES.find(g => g.id === genre);
+
+      if (type === 'all' && !genre && !year && sort === 'popularity.desc') {
+        const res = await fetchMovies.fetchTrending(pageNum);
+        return (res.data.results || []).filter(m => m.poster_path);
+      }
+
+      if (type === 'movie') {
+        const params = {
+          page: pageNum,
+          sort_by: sort,
+          include_adult: true,
+        };
+        if (genre) params.with_genres = genre;
+        if (year) params.primary_release_year = year;
+        if (sort === 'vote_average.desc') params['vote_count.gte'] = 80;
+        if (sort === 'primary_release_date.desc') {
+          params['primary_release_date.lte'] = new Date().toISOString().split('T')[0];
+        }
+
+        const res = await tmdbApi.get('/discover/movie', { params });
+        return (res.data.results || []).map(m => ({ ...m, media_type: 'movie' })).filter(m => m.poster_path);
+      }
+
+      if (type === 'tv') {
+        const params = {
+          page: pageNum,
+          sort_by: sort,
+          include_adult: true,
+        };
+        const tvGenre = genreObj?.tvId || genre;
+        if (tvGenre) params.with_genres = tvGenre;
+        if (year) params.first_air_date_year = year;
+        if (sort === 'vote_average.desc') params['vote_count.gte'] = 50;
+        if (sort === 'primary_release_date.desc') {
+          params['first_air_date.lte'] = new Date().toISOString().split('T')[0];
+        }
+
+        const res = await tmdbApi.get('/discover/tv', { params });
+        return (res.data.results || []).map(m => ({ ...m, media_type: 'tv' })).filter(m => m.poster_path);
+      }
+
+      // type === 'all' with filters: query both movie and tv and interleave
+      const movieParams = {
+        page: pageNum,
+        sort_by: sort,
+        include_adult: true,
+      };
+      if (genre) movieParams.with_genres = genre;
+      if (year) movieParams.primary_release_year = year;
+      if (sort === 'vote_average.desc') movieParams['vote_count.gte'] = 80;
+
+      const tvParams = {
+        page: pageNum,
+        sort_by: sort,
+        include_adult: true,
+      };
+      const tvGenre = genreObj?.tvId || genre;
+      if (tvGenre) tvParams.with_genres = tvGenre;
+      if (year) tvParams.first_air_date_year = year;
+      if (sort === 'vote_average.desc') tvParams['vote_count.gte'] = 50;
+
+      const [movieRes, tvRes] = await Promise.all([
+        tmdbApi.get('/discover/movie', { params: movieParams }).catch(() => ({ data: { results: [] } })),
+        tmdbApi.get('/discover/tv', { params: tvParams }).catch(() => ({ data: { results: [] } })),
+      ]);
+
+      const movies = (movieRes.data.results || []).map(m => ({ ...m, media_type: 'movie' }));
+      const tvs = (tvRes.data.results || []).map(m => ({ ...m, media_type: 'tv' }));
+
+      const merged = [];
+      const maxLen = Math.max(movies.length, tvs.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (i < movies.length) merged.push(movies[i]);
+        if (i < tvs.length) merged.push(tvs[i]);
+      }
+      return merged.filter(m => m.poster_path);
+    } catch (e) {
+      return [];
+    }
+  };
+
+  // Re-fetch recommendations when any filter changes
+  useEffect(() => {
+    let isCurrent = true;
+    setLoadingBrowse(true);
+    setBrowsePage(1);
+    setHasMore(true);
+
+    fetchBrowseItems(1, selectedGenre, selectedSort, selectedYear, selectedType)
+      .then(items => {
+        if (!isCurrent) return;
+        setRecommendations(items);
+        if (items.length === 0) setHasMore(false);
+      })
+      .catch(() => {
+        if (isCurrent) setRecommendations([]);
+      })
+      .finally(() => {
+        if (isCurrent) setLoadingBrowse(false);
+      });
+
+    return () => { isCurrent = false; };
+  }, [selectedGenre, selectedSort, selectedYear, selectedType]);
+
+  // Load next page function (for infinite scroll and "Load More" button)
+  const loadNextPage = async () => {
+    if (loadingMore || loadingBrowse || !hasMore) return;
+    setLoadingMore(true);
+    const nextPage = browsePage + 1;
+    try {
+      const newItems = await fetchBrowseItems(nextPage, selectedGenre, selectedSort, selectedYear, selectedType);
+      if (newItems.length === 0) {
+        setHasMore(false);
+      } else {
+        setRecommendations(prev => {
+          const seen = new Set(prev.map(i => `${i.id}-${i.media_type || (i.name ? 'tv' : 'movie')}`));
+          const uniqueNew = newItems.filter(i => !seen.has(`${i.id}-${i.media_type || (i.name ? 'tv' : 'movie')}`));
+          if (uniqueNew.length === 0) setHasMore(false);
+          return [...prev, ...uniqueNew];
+        });
+        setBrowsePage(nextPage);
+      }
+    } catch (e) {}
+    setLoadingMore(false);
+  };
+
+  const handleBrowseScroll = (e) => {
+    if (searchQuery.trim()) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollTop + clientHeight >= scrollHeight - 350) {
+      loadNextPage();
+    }
+  };
+
+  useEffect(() => {
+    const handleWindowScroll = () => {
+      if (showBrowseView && !searchQuery.trim() && hasMore && !loadingMore && !loadingBrowse) {
+        if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 500) {
+          loadNextPage();
+        }
+      }
+    };
+    window.addEventListener('scroll', handleWindowScroll);
+    return () => window.removeEventListener('scroll', handleWindowScroll);
+  }, [showBrowseView, searchQuery, hasMore, loadingMore, loadingBrowse, browsePage, selectedGenre, selectedSort, selectedYear, selectedType]);
 
   // When admin selects a TV show in browse/search modal
   useEffect(() => {
@@ -529,6 +739,11 @@ const WatchTogetherRoom = () => {
       setSelectedTvForModal(item);
       return;
     }
+
+    // Reset TV state so episodes drawer is immediately removed when switching to a movie
+    setCurrentTvDetails(null);
+    setSeasonEpisodes([]);
+    setActiveSeason(1);
 
     const embedUrl = buildMelopeeUrl(tmdbId, 'movie', 0);
 
@@ -708,8 +923,11 @@ const WatchTogetherRoom = () => {
         </div>
         <div className="flex items-center gap-2">
           {iframeSrc && isOwner && (
-            <button onClick={() => setShowBrowseView(!showBrowseView)} className="px-3 py-1.5 rounded-xl bg-brand-emerald text-black hover:bg-emerald-400 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5">
-              <Search size={14} /> {showBrowseView ? 'Back to Player' : 'Change Movie'}
+            <button
+              onClick={() => setShowBrowseView(!showBrowseView)}
+              className="px-3 py-1.5 rounded-xl bg-brand-emerald text-black hover:bg-emerald-400 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-md"
+            >
+              {showBrowseView ? <><Film size={14} /> Back to Player</> : <><Search size={14} /> Change Movie</>}
             </button>
           )}
           <button onClick={() => { navigator.clipboard.writeText(window.location.origin + '/watch-together/' + room.roomCode); alert('Invitation link copied!'); }}
@@ -721,7 +939,7 @@ const WatchTogetherRoom = () => {
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 overflow-hidden">
         {/* Left: Player or Browse */}
-        <div className="lg:col-span-3 flex flex-col overflow-y-auto bg-brand-background">
+        <div ref={browseContainerRef} onScroll={handleBrowseScroll} className="lg:col-span-3 flex flex-col overflow-y-auto bg-brand-background custom-scrollbar">
           {iframeSrc && !showBrowseView ? (
             <div className="flex flex-col flex-1 bg-black">
               {/* Responsive Video Frame */}
@@ -761,7 +979,7 @@ const WatchTogetherRoom = () => {
                     }
                   </span>
                 </div>
-                {isCurrentTv && (
+                {isCurrentTv && currentTvDetails && (
                   <div className="flex items-center gap-2">
                     <span className="px-2.5 py-1 rounded-lg bg-brand-background border border-brand-hover text-[11px] font-bold text-brand-emerald flex items-center gap-1.5">
                       <Tv size={12} /> S{currentTvInfo.season} • E{currentTvInfo.episode}
@@ -771,7 +989,7 @@ const WatchTogetherRoom = () => {
               </div>
 
               {/* TV Series Season & Episode Selection Bar */}
-              {isCurrentTv && (
+              {isCurrentTv && currentTvDetails && (
                 <div className="bg-brand-surface border-t border-brand-hover p-4 flex flex-col gap-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5">
@@ -919,28 +1137,146 @@ const WatchTogetherRoom = () => {
                     )}
                   </div>
 
+                  {/* Filters Bar: Type, Genre, Sort, Year */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-brand-surface border border-brand-hover rounded-2xl max-w-2xl mx-auto w-full shadow-md">
+                    <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 flex-1">
+                      {/* Media Type */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Type:</span>
+                        <select
+                          value={selectedType}
+                          onChange={(e) => setSelectedType(e.target.value)}
+                          className="bg-brand-background border border-brand-hover text-white text-xs font-semibold rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-brand-emerald cursor-pointer"
+                        >
+                          {TYPES.map(t => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Genre */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Genre:</span>
+                        <select
+                          value={selectedGenre}
+                          onChange={(e) => setSelectedGenre(e.target.value)}
+                          className="bg-brand-background border border-brand-hover text-white text-xs font-semibold rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-brand-emerald cursor-pointer"
+                        >
+                          {GENRES.map(g => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Sort By */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Sort:</span>
+                        <select
+                          value={selectedSort}
+                          onChange={(e) => setSelectedSort(e.target.value)}
+                          className="bg-brand-background border border-brand-hover text-white text-xs font-semibold rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-brand-emerald cursor-pointer"
+                        >
+                          {SORT_OPTIONS.map(s => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Year */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Year:</span>
+                        <select
+                          value={selectedYear}
+                          onChange={(e) => setSelectedYear(e.target.value)}
+                          className="bg-brand-background border border-brand-hover text-white text-xs font-semibold rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-brand-emerald cursor-pointer"
+                        >
+                          <option value="">All Years</option>
+                          {YEARS.filter(Boolean).map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Reset Filters */}
+                    {(selectedGenre || selectedYear || selectedType !== 'all' || selectedSort !== 'popularity.desc') && (
+                      <button
+                        onClick={() => {
+                          setSelectedGenre('');
+                          setSelectedSort('popularity.desc');
+                          setSelectedYear('');
+                          setSelectedType('all');
+                        }}
+                        className="text-[11px] text-brand-emerald hover:text-emerald-300 font-bold px-2 py-1 rounded-lg hover:bg-brand-background border border-brand-emerald/20 transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <RotateCcw size={11} /> Reset
+                      </button>
+                    )}
+                  </div>
+
                   {/* Recommendations */}
                   <div>
-                    <h2 className="text-base font-bold text-white mb-4 flex items-center gap-2">
-                      <span className="w-1 h-5 bg-brand-emerald rounded-full"></span>
-                      Recommended Movies & Shows
-                    </h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                      {recommendations.map(item => (
-                        <div key={item.id} onClick={() => handleSelectMovie(item)} className="bg-brand-surface border border-brand-hover rounded-xl p-2.5 hover:border-brand-emerald cursor-pointer transition-all hover:scale-105 flex flex-col group shadow-lg">
-                          <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2">
-                            <img src={getImageUrl(item.poster_path, 'w342')} alt={item.title || item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                            {item.vote_average > 0 && (
-                              <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-1.5 py-0.5 rounded-md text-[10px] font-bold text-yellow-400 flex items-center gap-0.5">
-                                <Star size={10} fill="currentColor" /> {parseFloat(item.vote_average).toFixed(1)}
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-xs font-bold text-white truncate">{item.title || item.name}</p>
-                          <p className="text-[11px] text-gray-400 capitalize mt-0.5">{item.media_type || 'movie'} • {(item.release_date || item.first_air_date || '').substring(0, 4)}</p>
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-base font-bold text-white flex items-center gap-2">
+                        <span className="w-1 h-5 bg-brand-emerald rounded-full"></span>
+                        {selectedGenre || selectedYear || selectedType !== 'all'
+                          ? 'Browse Collection'
+                          : 'Recommended Movies & Shows'
+                        }
+                        <span className="text-xs font-normal text-gray-400">
+                          ({recommendations.length} titles loaded)
+                        </span>
+                      </h2>
                     </div>
+
+                    {loadingBrowse ? (
+                      <div className="flex justify-center items-center py-24">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-brand-emerald"></div>
+                      </div>
+                    ) : recommendations.length === 0 ? (
+                      <div className="text-center py-16 bg-brand-surface/40 border border-brand-hover rounded-2xl">
+                        <p className="text-sm text-gray-400">No movies or TV shows found matching your filters.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                          {recommendations.map(item => (
+                            <div key={`${item.id}-${item.media_type || (item.name ? 'tv' : 'movie')}`} onClick={() => handleSelectMovie(item)} className="bg-brand-surface border border-brand-hover rounded-xl p-2.5 hover:border-brand-emerald cursor-pointer transition-all hover:scale-105 flex flex-col group shadow-lg">
+                              <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2">
+                                <img src={getImageUrl(item.poster_path, 'w342')} alt={item.title || item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                {item.vote_average > 0 && (
+                                  <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-1.5 py-0.5 rounded-md text-[10px] font-bold text-yellow-400 flex items-center gap-0.5">
+                                    <Star size={10} fill="currentColor" /> {parseFloat(item.vote_average).toFixed(1)}
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-xs font-bold text-white truncate">{item.title || item.name}</p>
+                              <p className="text-[11px] text-gray-400 capitalize mt-0.5">{item.media_type || (item.name ? 'tv' : 'movie')} • {(item.release_date || item.first_air_date || '').substring(0, 4)}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Load More Button & Infinite Scroll Indicator */}
+                        {hasMore && (
+                          <div className="flex justify-center mt-8 mb-4">
+                            <button
+                              onClick={loadNextPage}
+                              disabled={loadingMore}
+                              className="px-6 py-2.5 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover hover:border-brand-emerald text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg"
+                            >
+                              {loadingMore ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-emerald border-t-transparent"></div>
+                                  <span>Loading more titles...</span>
+                                </>
+                              ) : (
+                                <span>Load More Movies &amp; Shows</span>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </>
               ) : (

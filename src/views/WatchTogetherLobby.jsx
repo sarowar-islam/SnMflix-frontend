@@ -30,8 +30,8 @@ const WatchTogetherLobby = () => {
     try {
       const res = await api.post('/rooms', {
         title: roomTitle.trim() || `${user?.username || 'User'}'s Room`,
-        movieId: '299534', // Default Avengers Endgame or similar
-        mediaType: 'movie'
+        movieId: null,
+        mediaType: null
       });
       setCreatedRoom(res.data);
     } catch (err) {

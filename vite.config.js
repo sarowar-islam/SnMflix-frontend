@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://snmflix.onrender.com',
+        target: 'https://snmflix-backend.onrender.comhttps://snmflix-backend.onrender.com',
         changeOrigin: true,
       },
     },
