@@ -34,39 +34,49 @@ export default function WatchPage() {
   const serversList = useMemo(() => {
     const baseServers = [
       {
+        key: 'melopee',
+        name: 'Server 1', // Playback / Melopee (Default / Auto-selected)
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=${s}&episode=${e}&quality=auto` : `https://player.melopee.app/embed/movie?tmdb=${id}&quality=auto`
+      },
+      {
         key: 'vidzee',
-        name: 'Server 1',
+        name: 'Server 2', // VidZee
         urlFn: (id, s, e, type) => type === 'tv' ? `https://player.vidzee.wtf/embed/tv/${id}/${s}/${e}?quality=auto` : `https://player.vidzee.wtf/embed/movie/${id}?quality=auto`
       },
       {
         key: 'cinesrc',
-        name: 'Server 2',
+        name: 'Server 3', // CineSrc (Moves to last if anime)
         urlFn: (id, s, e, type) => type === 'tv' ? `https://cinesrc.st/embed/tv/${id}/${s}/${e}?quality=auto` : `https://cinesrc.st/embed/movie/${id}?quality=auto`
       },
       {
-        key: 'melopee',
-        name: 'Server 3',
-        urlFn: (id, s, e, type) => type === 'tv' ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=${s}&episode=${e}&quality=auto` : `https://player.melopee.app/embed/movie?tmdb=${id}&quality=auto`
-      },
-      {
         key: 'vidrock',
-        name: 'Server 4',
+        name: 'Server 4', // VidRock
         urlFn: (id, s, e, type) => type === 'tv' ? `https://vidrock.to/embed/tv/${id}/${s}/${e}?quality=auto` : `https://vidrock.to/embed/movie/${id}?quality=auto`
       },
       {
         key: 'vidstorm',
-        name: 'Server 5',
+        name: 'Server 5', // VidStorm
         urlFn: (id, s, e, type) => type === 'tv' ? `https://vidstorm.to/embed/tv/${id}/${s}/${e}?quality=auto` : `https://vidstorm.to/embed/movie/${id}?quality=auto`
       },
       {
         key: 'embedmaster',
-        name: 'Server 6',
+        name: 'Server 6', // EmbedMaster
         urlFn: (id, s, e, type) => type === 'tv' ? `https://embedmaster.link/tv/${id}/${s}/${e}?quality=auto` : `https://embedmaster.link/movie/${id}?quality=auto`
+      },
+      {
+        key: 'megaembed',
+        name: 'Server 7', // MegaEmbedApi
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://megaembedapi.site/embed/${id}/${s}/${e}?quality=auto` : `https://megaembedapi.site/embed/${id}?quality=auto`
+      },
+      {
+        key: 'vidfast',
+        name: 'Server 8', // VidFast
+        urlFn: (id, s, e, type) => type === 'tv' ? `https://vidfast.vc/embed/tv/${id}/${s}/${e}?quality=auto` : `https://vidfast.vc/embed/movie/${id}?quality=auto`
       },
     ];
 
     let list = [...baseServers];
-    // If anime, move cinesrc to last
+    // If anime, move cinesrc (3rd server) to last
     if (isAnime) {
       const cineIndex = list.findIndex(s => s.key === 'cinesrc');
       if (cineIndex !== -1) {
