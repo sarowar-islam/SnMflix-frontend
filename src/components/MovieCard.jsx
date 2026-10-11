@@ -77,7 +77,7 @@ export default function MovieCard({ movie, onRemove }) {
               className="flex-1 bg-brand-emerald hover:bg-emerald-400 text-black py-1.5 rounded-lg flex items-center justify-center transition-colors font-bold text-xs"
             >
               <Play size={14} className="mr-1" fill="currentColor" />
-              <span>Play</span>
+              <span>Watch</span>
             </button>
             <button
               onClick={handleWatchlist}
@@ -113,7 +113,7 @@ export default function MovieCard({ movie, onRemove }) {
               onClick={navigateToPlay}
               className="text-brand-emerald hover:underline font-bold text-[11px]"
             >
-              Play
+              Watch
             </button>
           </div>
         </div>
