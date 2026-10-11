@@ -89,6 +89,16 @@ const WatchTogetherRoom = () => {
 
   const [showBrowseView, setShowBrowseView] = useState(false);
 
+  // Movie/Show details for display
+  const [currentMediaDetails, setCurrentMediaDetails] = useState(null);
+  const [showFullDescription, setShowFullDescription] = useState(false);
+
+  // TV Series season/episode selection
+  const [tvSeasons, setTvSeasons] = useState([]);
+  const [selectedSeason, setSelectedSeason] = useState(1);
+  const [seasonEpisodes, setSeasonEpisodes] = useState([]);
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+
   const [browseQuery, setBrowseQuery] = useState('');
   const [browseGenre, setBrowseGenre] = useState('');
   const [browseSort, setBrowseSort] = useState('popularity.desc');
@@ -573,6 +583,52 @@ const WatchTogetherRoom = () => {
     }
   }, [showBrowseView, isOwner]);
 
+  // Fetch movie/show details when media changes
+  useEffect(() => {
+    const movieId = extractMovieId(room);
+    const mediaType = room?.mediaType || 'movie';
+
+    if (movieId && room?.currentMovieUrl) {
+      // Fetch media details
+      fetchMovies.fetchMovieDetails(movieId, mediaType)
+        .then(res => {
+          setCurrentMediaDetails(res.data);
+
+          // If it's a TV show, fetch seasons
+          if (mediaType === 'tv' && res.data.seasons) {
+            setTvSeasons(res.data.seasons.filter(s => s.season_number > 0));
+
+            // Determine current season from URL
+            const { season } = extractTvInfo(room.currentMovieUrl);
+            setSelectedSeason(season || 1);
+          }
+        })
+        .catch(() => {
+          setCurrentMediaDetails(null);
+        });
+    }
+  }, [room?.movieId, room?.mediaType, room?.currentMovieUrl]);
+
+  // Fetch episodes when season changes
+  useEffect(() => {
+    const movieId = extractMovieId(room);
+    const mediaType = room?.mediaType || 'movie';
+
+    if (movieId && mediaType === 'tv' && selectedSeason) {
+      setLoadingEpisodes(true);
+      fetchMovies.fetchSeasonEpisodes(movieId, selectedSeason)
+        .then(res => {
+          setSeasonEpisodes(res.data.episodes || []);
+        })
+        .catch(() => {
+          setSeasonEpisodes([]);
+        })
+        .finally(() => {
+          setLoadingEpisodes(false);
+        });
+    }
+  }, [room?.movieId, room?.mediaType, selectedSeason]);
+
   // Chat auto-scroll to bottom and mark read if drawer open
   useEffect(() => {
     if (chatBoxRef.current) {
@@ -711,6 +767,51 @@ const WatchTogetherRoom = () => {
       showToast(`Now playing: ${movie.title || movie.name}`);
     } catch (e) {
       alert('Failed to start movie');
+    }
+  };
+
+  // Handle episode selection for TV shows
+  const selectEpisode = async (episode) => {
+    if (!isAdmin || !currentMediaDetails) return;
+
+    const movieId = String(currentMediaDetails.id);
+    const url = buildMelopeeUrl(movieId, 'tv', 0, selectedSeason, episode.episode_number);
+
+    try {
+      // Update backend state
+      const response = await api.post(`/rooms/${roomCode}/playback`, {
+        currentMovieUrl: url,
+        movieId,
+        mediaType: 'tv',
+        isPlaying: true,
+        currentTime: 0,
+        playbackSpeed: 1.0
+      });
+
+      if (response.data) {
+        updateRoomState(response.data);
+      }
+
+      // Reset state tracking
+      localProgressRef.current = 0;
+      adminStateRef.current = { progress: 0, status: 'playing' };
+      lastServerAdminTimeRef.current = 0;
+      lastServerPlayingRef.current = true;
+
+      // Broadcast via WebSocket
+      sendPlaybackEvent('MOVIE_CHANGE', {
+        movieId,
+        mediaType: 'tv',
+        currentMovieUrl: url,
+        isPlaying: true,
+        currentTime: 0,
+        playbackSpeed: 1.0
+      });
+
+      setIframeSrc(url);
+      showToast(`Now playing: S${selectedSeason} E${episode.episode_number} - ${episode.name}`);
+    } catch (e) {
+      alert('Failed to load episode');
     }
   };
 
@@ -863,63 +964,61 @@ const WatchTogetherRoom = () => {
       )}
 
       {/* Top Bar */}
-      <header className="bg-brand-surface border-b border-brand-hover px-4 py-3 flex items-center justify-between z-20 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/watch-together')} className="p-2 rounded-xl bg-brand-background hover:bg-brand-hover text-gray-300 transition-colors cursor-pointer"><ArrowLeft size={18} /></button>
-          <div>
-            <h1 className="text-sm font-bold truncate max-w-xs sm:max-w-md">{room.title}</h1>
-            <p className="text-[11px] text-gray-400 flex items-center gap-2">
-              <span>Code: <strong className="text-brand-emerald font-mono">{room.roomCode}</strong></span>
-              <span>•</span>
-              <span>Owner: {room.ownerName}</span>
-              {isAdmin && <span className="px-1.5 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[10px] font-bold">Admin</span>}
+      <header className="bg-brand-surface border-b border-brand-hover px-3 md:px-4 py-2 md:py-3 flex items-center justify-between z-20 flex-shrink-0">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+          <button onClick={() => navigate('/watch-together')} className="p-1.5 md:p-2 rounded-xl bg-brand-background hover:bg-brand-hover text-gray-300 transition-colors cursor-pointer flex-shrink-0"><ArrowLeft size={16} className="md:w-[18px] md:h-[18px]" /></button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xs md:text-sm font-bold truncate">{room.title}</h1>
+            <p className="text-[10px] md:text-[11px] text-gray-400 flex items-center gap-1 md:gap-2 flex-wrap">
+              <span className="truncate">Code: <strong className="text-brand-emerald font-mono">{room.roomCode}</strong></span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline truncate">Owner: {room.ownerName}</span>
+              {isAdmin && <span className="px-1 md:px-1.5 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[9px] md:text-[10px] font-bold flex-shrink-0">Admin</span>}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
           {room.currentMovieUrl && isAdmin && (
             <button
-              onClick={() => setShowBrowseView(!showBrowseView)}
-              className="px-3 py-1.5 rounded-xl bg-brand-emerald text-black hover:bg-emerald-400 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-md"
+              onClick={() => setShowBrowseView(true)}
+              className="px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl bg-brand-background hover:bg-brand-hover border border-brand-hover text-gray-300 hover:text-white font-bold text-xs md:text-sm transition-colors cursor-pointer flex items-center gap-1 md:gap-2 shadow-lg"
             >
-              {showBrowseView ? <><Film size={14} /> Back to Player</> : <><Search size={14} /> Change Movie</>}
+              <Film size={14} className="md:w-4 md:h-4" />
+              <span className="inline lg:hidden">Change</span>
+              <span className="hidden lg:inline">Change Movie</span>
             </button>
           )}
           <button
             onClick={handleNativeShare}
-            className="px-3 py-1.5 rounded-xl bg-brand-background hover:bg-brand-hover border border-brand-hover text-xs font-semibold flex items-center gap-1.5 text-gray-300 transition-colors cursor-pointer"
+            className="px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl bg-brand-emerald hover:bg-emerald-400 text-black font-bold text-xs md:text-sm transition-colors cursor-pointer flex items-center gap-1 md:gap-2 shadow-lg"
           >
-            {copiedLink ? <Check size={14} className="text-brand-emerald" /> : <Share2 size={14} className="text-brand-emerald" />}
-            {copiedLink ? "Link Copied" : "Share Link"}
+            <Share2 size={14} className="md:w-4 md:h-4" />
+            <span className="hidden sm:inline">{copiedLink ? "Copied!" : "Share"}</span>
           </button>
         </div>
       </header>
 
       {/* Admin Pending Requests Banner */}
       {isAdmin && pendingRequests.length > 0 && (
-        <div className="bg-yellow-950/90 border-b border-yellow-900/60 px-4 py-3 flex flex-wrap items-center justify-between gap-3 z-30 shadow-xl flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <AlertCircle size={18} className="text-yellow-400 animate-pulse" />
-            <span className="text-xs font-bold text-yellow-300">
-              Pending Join Requests ({pendingRequests.length}):
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        <div className="bg-yellow-950/90 border-b border-yellow-900/60 px-4 py-2 md:py-3 z-30 shadow-xl flex-shrink-0">
+          <div className="flex flex-col gap-2">
             {pendingRequests.map(req => (
-              <div key={req.id} className="flex items-center gap-2 bg-brand-background px-3 py-1.5 rounded-xl border border-yellow-800/40 text-xs shadow-md">
-                <span className="font-bold text-white">{req.name}</span>
-                <button
-                  onClick={() => handleApproveRequest(req.id, true)}
-                  className="px-2.5 py-1 bg-brand-emerald text-black font-bold rounded-lg hover:bg-emerald-400 text-[10px] cursor-pointer"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleApproveRequest(req.id, false)}
-                  className="px-2.5 py-1 bg-red-600 text-white font-bold rounded-lg hover:bg-red-500 text-[10px] cursor-pointer"
-                >
-                  Reject
-                </button>
+              <div key={req.id} className="flex items-center justify-between gap-3 bg-brand-background px-3 md:px-4 py-2 md:py-2.5 rounded-xl border border-yellow-800/40 shadow-md">
+                <span className="text-xs md:text-sm font-bold text-white flex-1 truncate">{req.name} wants to join</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => handleApproveRequest(req.id, false)}
+                    className="px-3 md:px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-500 text-xs transition-colors cursor-pointer"
+                  >
+                    Decline
+                  </button>
+                  <button
+                    onClick={() => handleApproveRequest(req.id, true)}
+                    className="px-3 md:px-4 py-1.5 bg-brand-emerald text-black font-bold rounded-lg hover:bg-emerald-400 text-xs transition-colors cursor-pointer"
+                  >
+                    Approve
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -1108,33 +1207,199 @@ const WatchTogetherRoom = () => {
                 />
               )}
             </div>
-            <div className="p-4 bg-brand-surface border-t border-brand-hover flex flex-wrap items-center justify-between gap-4 flex-shrink-0">
-              <div>
-                <p className="text-xs font-bold text-white flex items-center gap-2">
-                  <span>Synchronized Playback Active</span>
-                  {isAdmin ? (
-                    <span className="px-2 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[10px] font-bold">You are Admin (Controls Synced)</span>
-                  ) : (
-                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px] font-bold">Spectating Room Admin</span>
-                  )}
-                </p>
-                <p className="text-[11px] text-gray-400">Admin play, pause, and seek actions are synchronized across all members in real-time.</p>
-              </div>
 
-              {isAdmin && (
-                <div className="flex flex-wrap items-center gap-2">
+            {/* Movie/Show Details Section */}
+            <div className="p-4 md:p-6 bg-brand-surface border-t border-brand-hover flex-shrink-0 space-y-3 md:space-y-4">
+              {currentMediaDetails && (
+                <>
+                  {/* Title and Metadata */}
+                  <div>
+                    <h2 className="text-xl md:text-2xl font-bold text-white mb-2">
+                      {currentMediaDetails.title || currentMediaDetails.name}
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm text-gray-400 mb-2 md:mb-3">
+                      {currentMediaDetails.vote_average && (
+                        <span className="flex items-center gap-1">
+                          ⭐ {currentMediaDetails.vote_average.toFixed(1)}/10
+                        </span>
+                      )}
+                      {(currentMediaDetails.release_date || currentMediaDetails.first_air_date) && (
+                        <span>📅 {(currentMediaDetails.release_date || currentMediaDetails.first_air_date).split('-')[0]}</span>
+                      )}
+                      {currentMediaDetails.runtime && (
+                        <span>⏱️ {Math.floor(currentMediaDetails.runtime / 60)}h {currentMediaDetails.runtime % 60}m</span>
+                      )}
+                      {currentMediaDetails.number_of_seasons && (
+                        <span>📺 {currentMediaDetails.number_of_seasons} Seasons</span>
+                      )}
+                    </div>
+
+                    {/* Description */}
+                    {currentMediaDetails.overview && (
+                      <div className="text-xs md:text-sm text-gray-300">
+                        <p className={`${showFullDescription ? '' : 'line-clamp-2'} cursor-pointer`} onClick={() => setShowFullDescription(!showFullDescription)}>
+                          {currentMediaDetails.overview}
+                        </p>
+                        {!showFullDescription && currentMediaDetails.overview.length > 150 && (
+                          <button
+                            onClick={() => setShowFullDescription(true)}
+                            className="text-brand-emerald text-xs mt-1 hover:underline"
+                          >
+                            Show more
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* TV Series: Season & Episode Selection */}
+                  {room?.mediaType === 'tv' && tvSeasons.length > 0 && (
+                    <div className="space-y-3">
+                      {/* Season Selector */}
+                      {isAdmin && (
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                          <label className="text-xs md:text-sm font-semibold text-gray-400">Season:</label>
+                          <div className="flex gap-2 flex-wrap">
+                            {tvSeasons.map((season) => (
+                              <button
+                                key={season.season_number}
+                                onClick={() => setSelectedSeason(season.season_number)}
+                                className={`px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                                  selectedSeason === season.season_number
+                                    ? 'bg-brand-emerald text-black'
+                                    : 'bg-brand-background text-gray-300 hover:bg-brand-hover'
+                                }`}
+                              >
+                                Season {season.season_number}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Episodes Grid */}
+                      {isAdmin && (
+                        <div>
+                          <h3 className="text-xs md:text-sm font-semibold text-gray-400 mb-2">Episodes:</h3>
+                          {loadingEpisodes ? (
+                            <div className="text-center py-4 text-gray-500 text-xs md:text-sm">Loading episodes...</div>
+                          ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3 max-h-48 md:max-h-60 overflow-y-auto custom-scrollbar">
+                              {seasonEpisodes.map((episode) => {
+                                const { episode: currentEp } = extractTvInfo(room?.currentMovieUrl || '');
+                                const isCurrentEpisode = currentEp === episode.episode_number;
+
+                                return (
+                                  <button
+                                    key={episode.id}
+                                    onClick={() => selectEpisode(episode)}
+                                    className={`p-2 md:p-3 rounded-lg text-left transition-all ${
+                                      isCurrentEpisode
+                                        ? 'bg-brand-emerald text-black ring-2 ring-brand-emerald'
+                                        : 'bg-brand-background hover:bg-brand-hover text-white'
+                                    }`}
+                                  >
+                                    <div className="text-xs font-bold mb-1">
+                                      Episode {episode.episode_number}
+                                    </div>
+                                    <div className={`text-xs truncate ${isCurrentEpisode ? 'text-black' : 'text-gray-400'}`}>
+                                      {episode.name}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Non-admin: Show current episode info only */}
+                      {!isAdmin && (
+                        <div className="p-3 bg-brand-background rounded-lg border border-brand-hover">
+                          <p className="text-xs text-gray-400">
+                            Currently watching: <strong className="text-white">Season {selectedSeason}</strong>
+                            {room?.currentMovieUrl && (() => {
+                              const { episode: currentEp } = extractTvInfo(room.currentMovieUrl);
+                              const currentEpisode = seasonEpisodes.find(ep => ep.episode_number === currentEp);
+                              return currentEpisode ? (
+                                <> • <strong className="text-white">Episode {currentEp}: {currentEpisode.name}</strong></>
+                              ) : null;
+                            })()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Sync Status Info (moved from top) */}
+              <div className="pt-3 border-t border-brand-hover flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-white flex flex-wrap items-center gap-2">
+                    <span>Synchronized Playback Active</span>
+                    {isAdmin ? (
+                      <span className="px-2 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[10px] font-bold">You are Admin (Controls Synced)</span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px] font-bold">Spectating Room Admin</span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-1">Admin play, pause, and seek actions are synchronized across all members in real-time.</p>
+                </div>
+                {isAdmin && (
                   <button
                     onClick={() => setShowBrowseView(true)}
-                    className="px-3 py-1.5 bg-brand-emerald text-black font-bold text-xs rounded-xl hover:bg-emerald-400 transition-colors cursor-pointer"
+                    className="px-3 md:px-4 py-2 bg-brand-emerald text-black font-bold text-xs md:text-sm rounded-xl hover:bg-emerald-400 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-lg w-full sm:w-auto"
                   >
+                    <Film size={16} />
                     Change Movie
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="lg:col-span-1 h-full min-h-0 flex flex-col">
+          {/* Chat Panel - Desktop only (lg+) */}
+          <div className="hidden lg:flex lg:col-span-1 h-full min-h-0 flex-col">
+            {renderChatSection()}
+          </div>
+        </div>
+      )}
+
+      {/* Floating Chat Button - Mobile & Tablet (below lg) */}
+      {room?.currentMovieUrl && (
+        <button
+          onClick={() => {
+            setChatDrawerOpen(true);
+            setUnreadCount(0);
+            prevMessagesLengthRef.current = messages.length;
+          }}
+          className="lg:hidden fixed bottom-6 right-5 z-40 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center cursor-pointer hover:bg-indigo-500 transition-colors"
+          title="Open Chat"
+        >
+          <MessageSquare size={24} />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center shadow">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* Chat Drawer Overlay - Mobile & Tablet (below lg) */}
+      {chatDrawerOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex flex-row">
+          {/* Backdrop - 20% on small screens, 50% on medium screens */}
+          <div
+            className="bg-black/40 backdrop-blur-[2px] w-[20%] md:w-1/2"
+            onClick={() => {
+              setChatDrawerOpen(false);
+              setUnreadCount(0);
+              prevMessagesLengthRef.current = messages.length;
+            }}
+          />
+          {/* Chat panel - 80% on small screens, 50% on medium screens */}
+          <div className="w-[80%] md:w-1/2 flex flex-col min-h-0 shadow-2xl">
             {renderChatSection()}
           </div>
         </div>
