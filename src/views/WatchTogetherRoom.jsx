@@ -413,6 +413,7 @@ const WatchTogetherRoom = () => {
                 }
 
                 setIframeSrc(targetUrl);
+                setShowBrowseView(false);
                 return;
               }
 
@@ -940,7 +941,7 @@ const WatchTogetherRoom = () => {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 overflow-hidden">
         {/* Left: Player or Browse */}
         <div ref={browseContainerRef} onScroll={handleBrowseScroll} className="lg:col-span-3 flex flex-col overflow-y-auto bg-brand-background custom-scrollbar">
-          {iframeSrc && !showBrowseView ? (
+          {iframeSrc && (!showBrowseView || !isOwner) ? (
             <div className="flex flex-col flex-1 bg-black">
               {/* Responsive Video Frame */}
               <div className="relative w-full aspect-video bg-gray-950">
