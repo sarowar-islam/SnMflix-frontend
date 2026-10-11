@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Film, Users, Search, ArrowLeft, Check, X, AlertCircle, Share2, Copy, MessageSquare } from 'lucide-react';
 import api from '../utils/api';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
+import useRoomWebSocket from '../hooks/useRoomWebSocket';
 
 const buildMelopeeUrl = (id, type = 'movie', startAt = 0, season = 1, episode = 1) => {
+  const timePos = Math.floor(startAt || 0);
   const base = type === 'tv'
-    ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=${season}&episode=${episode}&quality=auto`
-    : `https://player.melopee.app/embed/movie?tmdb=${id}&quality=auto`;
-  return startAt > 2 ? `${base}&startAt=${Math.floor(startAt)}` : base;
+    ? `https://player.melopee.app/embed/tv?tmdb=${id}&season=${season}&episode=${episode}&quality=auto&muted=false&autoplay=1&t=${timePos}`
+    : `https://player.melopee.app/embed/movie?tmdb=${id}&quality=auto&muted=false&autoplay=1&t=${timePos}`;
+  return base;
 };
 
 const extractMovieId = (roomData) => {
@@ -156,6 +158,17 @@ const WatchTogetherRoom = () => {
   const chatBoxRef = useRef(null);
   const prevRequestsCountRef = useRef(0);
 
+  // Refs for tracking playback state
+  const localProgressRef = useRef(0);
+  const adminStateRef = useRef({ progress: 0, status: 'paused' });
+  const lastEmittedStatusRef = useRef('playing');
+  const lastServerAdminTimeRef = useRef(null);
+  const lastServerPlayingRef = useRef(null);
+  const lastAdminSeekTimeRef = useRef(0);
+  const lastParticipantSeekTimeRef = useRef(0);
+
+  const [iframeSrc, setIframeSrc] = useState('');
+
   const isOwner = user && room && room.ownerId === user.id;
   const isAdmin = isOwner || (myParticipant && myParticipant.isAdmin);
 
@@ -164,7 +177,151 @@ const WatchTogetherRoom = () => {
     setRoom(newRoom);
   };
 
-  // Poll status for PENDING participants
+  // Send player commands via postMessage to control iframe player
+  const sendPlayerCommand = (action) => {
+    if (!iframeRef.current?.contentWindow) return;
+    try {
+      const msg = { player: true, action };
+      const strMsg = JSON.stringify(msg);
+      iframeRef.current.contentWindow.postMessage(msg, '*');
+      iframeRef.current.contentWindow.postMessage(strMsg, '*');
+
+      // Forward to nested frames if accessible
+      try {
+        const frames = iframeRef.current.contentWindow.frames;
+        if (frames && frames.length) {
+          for (let i = 0; i < frames.length; i++) {
+            try {
+              frames[i].postMessage(msg, '*');
+              frames[i].postMessage(strMsg, '*');
+            } catch (innerErr) {}
+          }
+        }
+      } catch (fErr) {}
+    } catch (e) {}
+  };
+
+  // Trigger autoplay with retries
+  const triggerAutoPlay = () => {
+    sendPlayerCommand('play');
+    setTimeout(() => sendPlayerCommand('play'), 200);
+    setTimeout(() => sendPlayerCommand('play'), 500);
+    setTimeout(() => sendPlayerCommand('play'), 1000);
+  };
+
+  // Listen for postMessage PLAYER_EVENT from the player iframe
+  useEffect(() => {
+    const handleMessage = (event) => {
+      let payload = event.data;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch (e) { return; }
+      }
+      if (payload?.type !== 'PLAYER_EVENT') return;
+
+      const { player_status, player_progress } = payload.data || {};
+
+      // Update local progress
+      if (typeof player_progress === 'number') {
+        const prevProgress = localProgressRef.current;
+        localProgressRef.current = player_progress;
+
+        // ADMIN: Track and broadcast state
+        if (isAdmin) {
+          const isSeekJump = prevProgress > 0 && Math.abs(player_progress - prevProgress) > 3;
+          const isSeekedEvent = player_status === 'seeked' || isSeekJump;
+
+          if (isSeekedEvent) {
+            lastAdminSeekTimeRef.current = Date.now();
+            triggerAutoPlay();
+
+            adminStateRef.current = { progress: player_progress, status: 'playing' };
+            lastEmittedStatusRef.current = 'playing';
+
+            const currentRoom = roomRef.current;
+            const currentId = extractMovieId(currentRoom);
+            if (currentId) {
+              api.post(`/rooms/${roomCode}/playback`, {
+                currentMovieUrl: currentRoom?.currentMovieUrl,
+                movieId: currentId,
+                mediaType: currentRoom?.mediaType || 'movie',
+                isPlaying: true,
+                currentTime: player_progress,
+                playbackSpeed: 1.0
+              }).catch(() => {});
+            }
+            return;
+          }
+
+          // Don't pause if admin just seeked
+          const justAdminSeeked = Date.now() - lastAdminSeekTimeRef.current < 3000;
+          if (justAdminSeeked && (player_status === 'paused' || player_status === 'pause')) {
+            triggerAutoPlay();
+            adminStateRef.current = { progress: player_progress, status: 'playing' };
+            return;
+          }
+
+          // Normal state updates
+          adminStateRef.current = { progress: player_progress, status: player_status || 'playing' };
+
+          if (player_status && player_status !== lastEmittedStatusRef.current) {
+            lastEmittedStatusRef.current = player_status;
+            const isPlaying = player_status === 'playing';
+            const currentRoom = roomRef.current;
+            const currentId = extractMovieId(currentRoom);
+
+            if (currentId) {
+              api.post(`/rooms/${roomCode}/playback`, {
+                currentMovieUrl: currentRoom?.currentMovieUrl,
+                movieId: currentId,
+                mediaType: currentRoom?.mediaType || 'movie',
+                isPlaying,
+                currentTime: player_progress,
+                playbackSpeed: 1.0
+              }).catch(() => {});
+            }
+          }
+        } else {
+          // MEMBER: Handle seek events
+          const justSeeked = Date.now() - lastParticipantSeekTimeRef.current < 4000;
+          if (player_status === 'seeked' || (justSeeked && (player_status === 'paused' || player_status === 'pause'))) {
+            if (roomRef.current?.isPlaying !== false) {
+              triggerAutoPlay();
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isAdmin, roomCode]);
+
+  // ADMIN: Stream playback state periodically
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const interval = setInterval(async () => {
+      const currentRoom = roomRef.current;
+      const currentId = extractMovieId(currentRoom);
+      if (!currentId) return;
+
+      const { progress, status } = adminStateRef.current;
+      const isPlaying = status === 'playing';
+
+      try {
+        await api.post(`/rooms/${roomCode}/playback`, {
+          currentMovieUrl: currentRoom.currentMovieUrl,
+          movieId: currentId,
+          mediaType: currentRoom.mediaType || 'movie',
+          isPlaying,
+          currentTime: progress,
+          playbackSpeed: 1.0
+        });
+      } catch (e) {}
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [isAdmin, roomCode]);
   useEffect(() => {
     if (!myParticipant || myParticipant.status !== 'PENDING') return;
 
@@ -193,6 +350,16 @@ const WatchTogetherRoom = () => {
         const roomData = res.data;
         updateRoomState(roomData);
         setParticipants(roomData.participants || []);
+
+        // Load initial movie if one is already playing
+        if (roomData.currentMovieUrl) {
+          const movieId = extractMovieId(roomData);
+          const mediaType = roomData.mediaType || 'movie';
+          const currentTime = roomData.currentTime || 0;
+          const { season, episode } = extractTvInfo(roomData.currentMovieUrl);
+          const initialUrl = buildMelopeeUrl(movieId, mediaType, currentTime, season, episode);
+          setIframeSrc(initialUrl);
+        }
 
         if (user && (roomData.ownerId === user.id || roomData.participants?.some(p => p.userId === user.id && p.isAdmin))) {
           const me = roomData.participants.find(p => p.userId === user.id) || { name: user.username, status: 'APPROVED', isAdmin: roomData.ownerId === user.id };
@@ -223,7 +390,7 @@ const WatchTogetherRoom = () => {
     return () => { isMounted = false; };
   }, [roomCode, user]);
 
-  // Sync Polling
+  // Sync participants, messages, pending requests, and playback state
   useEffect(() => {
     if (!myParticipant || myParticipant.status !== 'APPROVED') return;
 
@@ -271,23 +438,63 @@ const WatchTogetherRoom = () => {
         if (serverRoom) {
           updateRoomState(serverRoom);
 
+          // MEMBER: Sync playback via postMessage commands
           if (!isAdmin) {
             const serverMovieId = extractMovieId(serverRoom);
             const serverMediaType = serverRoom.mediaType || 'movie';
-            const serverMediaKey = getMediaKey(serverRoom);
 
-            if (serverMovieId) {
-              if (!iframeSrc || participantStateRef.current.mediaKey !== serverMediaKey) {
-                participantStateRef.current.mediaKey = serverMediaKey;
-                participantStateRef.current.movieId = serverMovieId;
-                const initialTime = serverRoom.currentTime || 0;
-                let targetUrl = serverRoom.currentMovieUrl;
-                if (!targetUrl) {
-                  const { season, episode } = extractTvInfo(serverRoom.currentMovieUrl);
-                  targetUrl = buildMelopeeUrl(serverMovieId, serverMediaType, initialTime, season, episode);
-                }
+            if (serverMovieId && serverRoom.currentMovieUrl) {
+              // Check if movie/episode changed - reload iframe
+              const currentMovieId = extractMovieId(room);
+              const { season: currentSeason, episode: currentEpisode } = extractTvInfo(room?.currentMovieUrl || '');
+              const { season: serverSeason, episode: serverEpisode } = extractTvInfo(serverRoom.currentMovieUrl);
+
+              const movieChanged = currentMovieId !== serverMovieId;
+              const episodeChanged = serverMediaType === 'tv' && (currentSeason !== serverSeason || currentEpisode !== serverEpisode);
+
+              if (movieChanged || episodeChanged || !iframeSrc) {
+                // Movie/episode changed - reload iframe with new URL
+                const serverTime = serverRoom.currentTime || 0;
+                const targetUrl = buildMelopeeUrl(serverMovieId, serverMediaType, serverTime, serverSeason, serverEpisode);
+                console.log('[Member Sync] Loading new movie/episode:', targetUrl);
                 setIframeSrc(targetUrl);
+                lastServerAdminTimeRef.current = serverTime;
+                lastServerPlayingRef.current = serverRoom.isPlaying;
+                return;
               }
+
+              // Same movie/episode - sync play/pause/seek via postMessage
+
+              // 1) Play/Pause sync
+              if (lastServerPlayingRef.current !== serverRoom.isPlaying) {
+                lastServerPlayingRef.current = serverRoom.isPlaying;
+                if (serverRoom.isPlaying) {
+                  console.log('[Member Sync] Admin playing - triggering play');
+                  triggerAutoPlay();
+                } else {
+                  console.log('[Member Sync] Admin paused - sending pause');
+                  sendPlayerCommand('pause');
+                  sendPlayerCommand(`seek${Math.floor(serverRoom.currentTime || 0)}`);
+                }
+              }
+
+              // 2) Seek sync (admin jumped to new time)
+              const currentAdminTime = serverRoom.currentTime || 0;
+              const prevAdminTime = lastServerAdminTimeRef.current !== null ? lastServerAdminTimeRef.current : currentAdminTime;
+              const timeJump = Math.abs(currentAdminTime - prevAdminTime);
+
+              if (timeJump > 4) {
+                console.log('[Member Sync] Admin seeked to:', currentAdminTime, 'seconds (jump:', timeJump, 's)');
+                lastParticipantSeekTimeRef.current = Date.now();
+                sendPlayerCommand(`seek${Math.floor(currentAdminTime)}`);
+                if (serverRoom.isPlaying) {
+                  triggerAutoPlay();
+                } else {
+                  sendPlayerCommand('pause');
+                }
+              }
+
+              lastServerAdminTimeRef.current = currentAdminTime;
             }
           }
         }
@@ -303,12 +510,10 @@ const WatchTogetherRoom = () => {
           setPendingRequests(reqs);
         }
       } catch (err) {}
-    }, 1000);
+    }, 1000); // Poll every 1 second for tight sync
 
     return () => clearInterval(interval);
-  }, [roomCode, myParticipant, user, isOwner, participants.length]);
-
-  const participantStateRef = useRef({ mediaKey: null, movieId: null });
+  }, [roomCode, myParticipant, isAdmin, participants.length, navigate, iframeSrc, room]);
 
   // Fetch trending movies for admin selection
   useEffect(() => {
@@ -388,16 +593,41 @@ const WatchTogetherRoom = () => {
     }
   };
 
-  const [iframeSrc, setIframeSrc] = useState('');
+  // WebSocket playback event handler
+  const handlePlaybackEvent = useCallback((event) => {
+    console.log('[Room] Received playback event:', event);
+
+    if (!event) return;
+
+    const { eventType, movieId, mediaType, currentMovieUrl, currentTime } = event;
+
+    // For non-admin members, sync to admin's exact position
+    if (!isAdmin && movieId && mediaType) {
+      const { season, episode } = extractTvInfo(currentMovieUrl);
+      const newUrl = buildMelopeeUrl(movieId, mediaType, currentTime || 0, season, episode);
+      console.log('[Room] Member syncing to:', newUrl);
+      setIframeSrc(newUrl);
+
+      if (eventType === 'MOVIE_CHANGE') {
+        showToast(`Now playing: ${movieId}`);
+      }
+    }
+  }, [isAdmin]);
+
+  // Initialize WebSocket connection
+  const { sendPlaybackEvent } = useRoomWebSocket(
+    roomCode,
+    user?.id,
+    handlePlaybackEvent
+  );
 
   const selectMovie = async (movie, mediaType, season = 1, episode = 1) => {
     const movieId = String(movie.id);
-    const url = mediaType === 'tv'
-      ? `https://player.melopee.app/embed/tv?tmdb=${movieId}&season=${season}&episode=${episode}&quality=auto`
-      : `https://player.melopee.app/embed/movie?tmdb=${movieId}&quality=auto`;
+    const url = buildMelopeeUrl(movieId, mediaType, 0, season, episode);
 
     try {
-      await api.post(`/rooms/${roomCode}/playback`, {
+      // Update backend state
+      const response = await api.post(`/rooms/${roomCode}/playback`, {
         currentMovieUrl: url,
         movieId,
         mediaType,
@@ -405,6 +635,28 @@ const WatchTogetherRoom = () => {
         currentTime: 0,
         playbackSpeed: 1.0
       });
+
+      // Update local room state so UI switches to player screen
+      if (response.data) {
+        updateRoomState(response.data);
+      }
+
+      // Reset state tracking
+      localProgressRef.current = 0;
+      adminStateRef.current = { progress: 0, status: 'playing' };
+      lastServerAdminTimeRef.current = 0;
+      lastServerPlayingRef.current = true;
+
+      // Broadcast via WebSocket
+      sendPlaybackEvent('MOVIE_CHANGE', {
+        movieId,
+        mediaType,
+        currentMovieUrl: url,
+        isPlaying: true,
+        currentTime: 0,
+        playbackSpeed: 1.0
+      });
+
       setIframeSrc(url);
       setShowBrowseView(false);
       showToast(`Now playing: ${movie.title || movie.name}`);
@@ -735,126 +987,6 @@ const WatchTogetherRoom = () => {
                 )}
               </div>
             </div>
-
-            {/* Movie Selection Modal */}
-            {showBrowseView && isAdmin && (
-              <div
-                onScroll={handleBrowseScroll}
-                className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col p-4 sm:p-8 overflow-y-auto custom-scrollbar"
-              >
-                <div className="max-w-6xl mx-auto w-full flex justify-between items-center mb-6 flex-shrink-0">
-                  <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-white">Select Movie or Show to Watch</h2>
-                    <p className="text-xs text-gray-400">Search, filter genres, sort, and browse titles to start watching together</p>
-                  </div>
-                  <button onClick={() => setShowBrowseView(false)} className="p-2.5 bg-brand-surface rounded-xl hover:bg-brand-hover text-gray-300 hover:text-white cursor-pointer transition-colors"><X size={20} /></button>
-                </div>
-
-                <div className="max-w-6xl mx-auto w-full flex flex-col gap-6 flex-shrink-0 mb-6">
-                  {/* Search Bar */}
-                  <div>
-                    <input
-                      type="text"
-                      value={browseQuery}
-                      onChange={e => setBrowseQuery(e.target.value)}
-                      placeholder="Search movies or shows..."
-                      className="w-full bg-transparent border-b border-brand-hover pb-3 text-base sm:text-lg text-white placeholder-gray-500 focus:outline-none focus:border-brand-emerald transition-colors"
-                    />
-                  </div>
-
-                  {/* Filters (Borderless / Text links) */}
-                  <div className="space-y-3 text-xs">
-                    {/* Genres */}
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-                      <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Genre:</span>
-                      {[
-                        { label: 'All', id: '' },
-                        { label: 'Action', id: '28' },
-                        { label: 'Comedy', id: '35' },
-                        { label: 'Horror', id: '27' },
-                        { label: 'Romance', id: '10749' },
-                        { label: 'Sci-Fi', id: '878' },
-                        { label: 'Drama', id: '18' },
-                        { label: 'Animation', id: '16' },
-                        { label: 'Thriller', id: '53' },
-                      ].map(g => (
-                        <button
-                          key={g.id}
-                          onClick={() => setBrowseGenre(g.id)}
-                          className={`cursor-pointer transition-colors ${browseGenre === g.id ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
-                        >
-                          {g.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Sort By */}
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-                      <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Sort:</span>
-                      {[
-                        { label: 'Popular', id: 'popularity.desc' },
-                        { label: 'Top Rated', id: 'vote_average.desc' },
-                        { label: 'Newest', id: 'primary_release_date.desc' },
-                      ].map(s => (
-                        <button
-                          key={s.id}
-                          onClick={() => setBrowseSort(s.id)}
-                          className={`cursor-pointer transition-colors ${browseSort === s.id ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Year */}
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-                      <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Year:</span>
-                      {['', '2026', '2025', '2024', '2023', '2022', '2021', '2020', '2019'].map(y => (
-                        <button
-                          key={y}
-                          onClick={() => setBrowseYear(y)}
-                          className={`cursor-pointer transition-colors ${browseYear === y ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
-                        >
-                          {y === '' ? 'All' : y}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Movie Results Grid */}
-                <div className="max-w-6xl mx-auto w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pb-12 flex-1">
-                  {browseMovies.map((m, idx) => (
-                    <div
-                      key={`${m.id}-${idx}`}
-                      onClick={() => selectMovie(m, m.media_type || (m.title ? 'movie' : 'tv'))}
-                      className="bg-brand-surface rounded-xl overflow-hidden cursor-pointer hover:ring-2 ring-brand-emerald transition-all group flex flex-col"
-                    >
-                      <div className="aspect-[2/3] relative bg-brand-background">
-                        <img
-                          src={getImageUrl(m.poster_path, 'w500')}
-                          alt={m.title || m.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center">
-                          <span className="px-3 py-2 bg-brand-emerald text-black font-bold text-xs rounded-xl shadow-lg">Start Watching</span>
-                        </div>
-                      </div>
-                      <div className="p-2.5 flex flex-col justify-between flex-1 bg-brand-surface">
-                        <p className="text-xs font-bold text-white truncate">{m.title || m.name}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{m.release_date ? m.release_date.split('-')[0] : (m.first_air_date ? m.first_air_date.split('-')[0] : '')}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {browseLoading && (
-                  <div className="py-6 text-center text-xs text-brand-emerald font-semibold animate-pulse">
-                    Loading more movies & shows...
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Divider line - only on lg+ */}
@@ -916,18 +1048,166 @@ const WatchTogetherRoom = () => {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullScreen"
                 allowFullScreen
               />
+              {!isAdmin && (
+                <div
+                  className="absolute inset-0 z-20 bg-transparent cursor-not-allowed"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    showToast("Only room admins can control playback!");
+                  }}
+                />
+              )}
             </div>
-            <div className="p-4 bg-brand-surface border-t border-brand-hover flex items-center justify-between flex-shrink-0">
+            <div className="p-4 bg-brand-surface border-t border-brand-hover flex flex-wrap items-center justify-between gap-4 flex-shrink-0">
               <div>
-                <p className="text-xs font-bold text-white">Synchronized Playback Active</p>
-                <p className="text-[11px] text-gray-400">Owner controls are synced across all members in real-time.</p>
+                <p className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>Synchronized Playback Active</span>
+                  {isAdmin ? (
+                    <span className="px-2 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[10px] font-bold">You are Admin (Controls Synced)</span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px] font-bold">Spectating Room Admin</span>
+                  )}
+                </p>
+                <p className="text-[11px] text-gray-400">Admin play, pause, and seek actions are synchronized across all members in real-time.</p>
               </div>
+
+              {isAdmin && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setShowBrowseView(true)}
+                    className="px-3 py-1.5 bg-brand-emerald text-black font-bold text-xs rounded-xl hover:bg-emerald-400 transition-colors cursor-pointer"
+                  >
+                    Change Movie
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="lg:col-span-1 h-full min-h-0 flex flex-col">
             {renderChatSection()}
           </div>
+        </div>
+      )}
+
+      {/* Movie Selection Modal */}
+      {showBrowseView && isAdmin && (
+        <div
+          onScroll={handleBrowseScroll}
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col p-4 sm:p-8 overflow-y-auto custom-scrollbar"
+        >
+          <div className="max-w-6xl mx-auto w-full flex justify-between items-center mb-6 flex-shrink-0">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-white">Select Movie or Show to Watch</h2>
+              <p className="text-xs text-gray-400">Search, filter genres, sort, and browse titles to start watching together</p>
+            </div>
+            <button onClick={() => setShowBrowseView(false)} className="p-2.5 bg-brand-surface rounded-xl hover:bg-brand-hover text-gray-300 hover:text-white cursor-pointer transition-colors"><X size={20} /></button>
+          </div>
+
+          <div className="max-w-6xl mx-auto w-full flex flex-col gap-6 flex-shrink-0 mb-6">
+            {/* Search Bar */}
+            <div>
+              <input
+                type="text"
+                value={browseQuery}
+                onChange={e => setBrowseQuery(e.target.value)}
+                placeholder="Search movies or shows..."
+                className="w-full bg-transparent border-b border-brand-hover pb-3 text-base sm:text-lg text-white placeholder-gray-500 focus:outline-none focus:border-brand-emerald transition-colors"
+              />
+            </div>
+
+            {/* Filters (Borderless / Text links) */}
+            <div className="space-y-3 text-xs">
+              {/* Genres */}
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Genre:</span>
+                {[
+                  { label: 'All', id: '' },
+                  { label: 'Action', id: '28' },
+                  { label: 'Comedy', id: '35' },
+                  { label: 'Horror', id: '27' },
+                  { label: 'Romance', id: '10749' },
+                  { label: 'Sci-Fi', id: '878' },
+                  { label: 'Drama', id: '18' },
+                  { label: 'Animation', id: '16' },
+                  { label: 'Thriller', id: '53' },
+                ].map(g => (
+                  <button
+                    key={g.id}
+                    onClick={() => setBrowseGenre(g.id)}
+                    className={`cursor-pointer transition-colors ${browseGenre === g.id ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sort By */}
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Sort:</span>
+                {[
+                  { label: 'Popular', id: 'popularity.desc' },
+                  { label: 'Top Rated', id: 'vote_average.desc' },
+                  { label: 'Newest', id: 'primary_release_date.desc' },
+                ].map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setBrowseSort(s.id)}
+                    className={`cursor-pointer transition-colors ${browseSort === s.id ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Year */}
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Year:</span>
+                {['', '2026', '2025', '2024', '2023', '2022', '2021', '2020', '2019'].map(y => (
+                  <button
+                    key={y}
+                    onClick={() => setBrowseYear(y)}
+                    className={`cursor-pointer transition-colors ${browseYear === y ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    {y === '' ? 'All' : y}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Movie Results Grid */}
+          <div className="max-w-6xl mx-auto w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pb-12 flex-1">
+            {browseMovies.map((m, idx) => (
+              <div
+                key={`${m.id}-${idx}`}
+                onClick={() => selectMovie(m, m.media_type || (m.title ? 'movie' : 'tv'))}
+                className="bg-brand-surface rounded-xl overflow-hidden cursor-pointer hover:ring-2 ring-brand-emerald transition-all group flex flex-col"
+              >
+                <div className="aspect-[2/3] relative bg-brand-background">
+                  <img
+                    src={getImageUrl(m.poster_path, 'w500')}
+                    alt={m.title || m.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center">
+                    <span className="px-3 py-2 bg-brand-emerald text-black font-bold text-xs rounded-xl shadow-lg">Start Watching</span>
+                  </div>
+                </div>
+                <div className="p-2.5 flex flex-col justify-between flex-1 bg-brand-surface">
+                  <p className="text-xs font-bold text-white truncate">{m.title || m.name}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">{m.release_date ? m.release_date.split('-')[0] : (m.first_air_date ? m.first_air_date.split('-')[0] : '')}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {browseLoading && (
+            <div className="py-6 text-center text-xs text-brand-emerald font-semibold animate-pulse">
+              Loading more movies & shows...
+            </div>
+          )}
         </div>
       )}
     </div>
