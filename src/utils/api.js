@@ -2,7 +2,7 @@ import axios from 'axios';
 import { STORAGE_KEYS } from './storage';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://snmflix-backend.onrender.comhttps://snmflix-backend.onrender.com/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://snmflix-backend.onrender.com/api',
   headers: {
     'Content-Type': 'application/json'
   }

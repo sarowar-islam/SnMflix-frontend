@@ -6,7 +6,7 @@ This guide explains how to deploy the **SnMflix Frontend** (Vite + React) to [Ve
 
 In your Vercel project settings under **Environment Variables**, add:
 
-- `VITE_API_BASE_URL`: `https://snmflix-backend.onrender.comhttps://snmflix-backend.onrender.com/api`
+- `VITE_API_BASE_URL`: `https://snmflix-backend.onrender.com/api`
 - `VITE_TMDB_API_KEY`: `dd09381517f08b551e2162a3826b2695`
 - `VITE_EMBED_BASE_URL`: `https://multiembed.mov/`
 
