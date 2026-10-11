@@ -234,6 +234,8 @@ export default function MovieDetails() {
                     try {
                       await api.post(`/rooms/${activeRoomCode}/playback`, {
                         currentMovieUrl: embedUrl,
+                        movieId: String(id),
+                        mediaType: mediaType,
                         isPlaying: true,
                         currentTime: 0,
                         playbackSpeed: 1.0
