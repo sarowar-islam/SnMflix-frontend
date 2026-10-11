@@ -474,17 +474,25 @@ const WatchTogetherRoom = () => {
                 } else {
                   console.log('[Member Sync] Admin paused - sending pause');
                   sendPlayerCommand('pause');
-                  sendPlayerCommand(`seek${Math.floor(serverRoom.currentTime || 0)}`);
                 }
               }
 
               // 2) Seek sync (admin jumped to new time)
+              // Only sync if there's a REAL jump, not natural playback drift
               const currentAdminTime = serverRoom.currentTime || 0;
               const prevAdminTime = lastServerAdminTimeRef.current !== null ? lastServerAdminTimeRef.current : currentAdminTime;
-              const timeJump = Math.abs(currentAdminTime - prevAdminTime);
 
-              if (timeJump > 4) {
-                console.log('[Member Sync] Admin seeked to:', currentAdminTime, 'seconds (jump:', timeJump, 's)');
+              // Calculate expected drift (2 seconds since last poll + admin's 1.5s broadcast interval)
+              const expectedDrift = 2; // 2 second polling interval
+              const actualDrift = currentAdminTime - prevAdminTime;
+
+              // Only seek if drift is significantly different from expected
+              // This means admin actually jumped, not just natural playback
+              const unexpectedJump = Math.abs(actualDrift - expectedDrift);
+
+              // Only seek if jump is > 6 seconds to avoid micro-corrections
+              if (unexpectedJump > 6) {
+                console.log('[Member Sync] Admin seeked to:', currentAdminTime, 'seconds (unexpected jump:', unexpectedJump, 's)');
                 lastParticipantSeekTimeRef.current = Date.now();
                 sendPlayerCommand(`seek${Math.floor(currentAdminTime)}`);
                 if (serverRoom.isPlaying) {
@@ -510,7 +518,7 @@ const WatchTogetherRoom = () => {
           setPendingRequests(reqs);
         }
       } catch (err) {}
-    }, 1000); // Poll every 1 second for tight sync
+    }, 2000); // Poll every 2 seconds to reduce sync frequency
 
     return () => clearInterval(interval);
   }, [roomCode, myParticipant, isAdmin, participants.length, navigate, iframeSrc, room]);
