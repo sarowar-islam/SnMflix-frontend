@@ -85,8 +85,62 @@ const WatchTogetherRoom = () => {
   const prevMessagesLengthRef = useRef(0);
   const isInitialMessageLoadRef = useRef(true);
 
-  const [recommendations, setRecommendations] = useState([]);
   const [showBrowseView, setShowBrowseView] = useState(false);
+
+  const [browseQuery, setBrowseQuery] = useState('');
+  const [browseGenre, setBrowseGenre] = useState('');
+  const [browseSort, setBrowseSort] = useState('popularity.desc');
+  const [browseYear, setBrowseYear] = useState('');
+  const [browsePage, setBrowsePage] = useState(1);
+  const [browseTotalPages, setBrowseTotalPages] = useState(1);
+  const [browseMovies, setBrowseMovies] = useState([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+
+  // Fetch movies when filters change or modal opens
+  useEffect(() => {
+    if (!showBrowseView) return;
+    setBrowsePage(1);
+    fetchBrowseResults(1, true);
+  }, [showBrowseView, browseQuery, browseGenre, browseSort, browseYear]);
+
+  const fetchBrowseResults = async (pageNum, reset = false) => {
+    setBrowseLoading(true);
+    try {
+      let res;
+      if (browseQuery.trim()) {
+        res = await fetchMovies.searchMulti(browseQuery);
+        const results = (res.data.results || []).filter(m => m.poster_path && m.media_type !== 'person');
+        setBrowseMovies(reset ? results : (prev => [...prev, ...results]));
+        setBrowseTotalPages(res.data.total_pages || 1);
+      } else {
+        const params = {
+          page: pageNum,
+          sort_by: browseSort,
+          include_adult: true,
+        };
+        if (browseGenre) params.with_genres = browseGenre;
+        if (browseYear) params.primary_release_year = browseYear;
+
+        res = await fetchMovies.fetchDiscover(params);
+        const results = res.data.results || [];
+        setBrowseMovies(reset ? results : (prev => [...prev, ...results]));
+        setBrowseTotalPages(res.data.total_pages || 1);
+      }
+    } catch (e) {
+      if (reset) setBrowseMovies([]);
+    } finally {
+      setBrowseLoading(false);
+    }
+  };
+
+  const handleBrowseScroll = (e) => {
+    const { scrollTop, clientHeight, scrollHeight } = e.target;
+    if (scrollHeight - scrollTop - clientHeight < 300 && !browseLoading && browsePage < browseTotalPages) {
+      const next = browsePage + 1;
+      setBrowsePage(next);
+      fetchBrowseResults(next, false);
+    }
+  };
 
   const [toastMessage, setToastMessage] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -103,6 +157,7 @@ const WatchTogetherRoom = () => {
   const prevRequestsCountRef = useRef(0);
 
   const isOwner = user && room && room.ownerId === user.id;
+  const isAdmin = isOwner || (myParticipant && myParticipant.isAdmin);
 
   const updateRoomState = (newRoom) => {
     roomRef.current = newRoom;
@@ -139,11 +194,14 @@ const WatchTogetherRoom = () => {
         updateRoomState(roomData);
         setParticipants(roomData.participants || []);
 
-        if (user && roomData.ownerId === user.id) {
-          setMyParticipant({ name: user.username, status: 'APPROVED', isAdmin: true });
+        if (user && (roomData.ownerId === user.id || roomData.participants?.some(p => p.userId === user.id && p.isAdmin))) {
+          const me = roomData.participants.find(p => p.userId === user.id) || { name: user.username, status: 'APPROVED', isAdmin: roomData.ownerId === user.id };
+          setMyParticipant(me);
           setHasRequested(true);
-          const reqRes = await api.get(`/rooms/${roomCode}/requests`);
-          if (isMounted) setPendingRequests(reqRes.data || []);
+          if (me.isAdmin || roomData.ownerId === user.id) {
+            const reqRes = await api.get(`/rooms/${roomCode}/requests`);
+            if (isMounted) setPendingRequests(reqRes.data || []);
+          }
         } else {
           const savedName = searchParams.get('name') || localStorage.getItem(`room_joined_${roomCode}`);
           if (savedName) {
@@ -183,6 +241,17 @@ const WatchTogetherRoom = () => {
         }
 
         setParticipants(newParticipants);
+
+        // Check if I was removed from the room
+        if (myParticipant) {
+          const amIStillInRoom = newParticipants.some(p => p.id === myParticipant.id || p.name === myParticipant.name);
+          if (!amIStillInRoom) {
+            alert('You have been removed from the room.');
+            navigate('/watch-together');
+            return;
+          }
+        }
+
         const newMsgs = syncRes.data.messages || [];
         setMessages(newMsgs);
 
@@ -202,7 +271,7 @@ const WatchTogetherRoom = () => {
         if (serverRoom) {
           updateRoomState(serverRoom);
 
-          if (!isOwner) {
+          if (!isAdmin) {
             const serverMovieId = extractMovieId(serverRoom);
             const serverMediaType = serverRoom.mediaType || 'movie';
             const serverMediaKey = getMediaKey(serverRoom);
@@ -223,7 +292,7 @@ const WatchTogetherRoom = () => {
           }
         }
 
-        if (user && serverRoom?.ownerId === user.id) {
+        if (isAdmin) {
           const reqRes = await api.get(`/rooms/${roomCode}/requests`);
           const reqs = reqRes.data || [];
           if (reqs.length > prevRequestsCountRef.current) {
@@ -502,12 +571,12 @@ const WatchTogetherRoom = () => {
               <span>Code: <strong className="text-brand-emerald font-mono">{room.roomCode}</strong></span>
               <span>•</span>
               <span>Owner: {room.ownerName}</span>
-              {isOwner && <span className="px-1.5 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[10px] font-bold">Admin</span>}
+              {isAdmin && <span className="px-1.5 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[10px] font-bold">Admin</span>}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {room.currentMovieUrl && isOwner && (
+          {room.currentMovieUrl && isAdmin && (
             <button
               onClick={() => setShowBrowseView(!showBrowseView)}
               className="px-3 py-1.5 rounded-xl bg-brand-emerald text-black hover:bg-emerald-400 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-md"
@@ -525,8 +594,8 @@ const WatchTogetherRoom = () => {
         </div>
       </header>
 
-      {/* Admin Pending Requests Banner (Top, below navbar) */}
-      {isOwner && pendingRequests.length > 0 && (
+      {/* Admin Pending Requests Banner */}
+      {isAdmin && pendingRequests.length > 0 && (
         <div className="bg-yellow-950/90 border-b border-yellow-900/60 px-4 py-3 flex flex-wrap items-center justify-between gap-3 z-30 shadow-xl flex-shrink-0">
           <div className="flex items-center gap-2">
             <AlertCircle size={18} className="text-yellow-400 animate-pulse" />
@@ -581,21 +650,22 @@ const WatchTogetherRoom = () => {
                 <div className="flex flex-wrap gap-4">
                   {participants.map((p, idx) => {
                     const isMe = p.name === (myParticipant?.name || user?.username);
+                    const isParticipantAdmin = p.isAdmin || p.admin || (room && p.userId === room.ownerId);
                     return (
                       <div key={idx} className="relative group/member">
-                        <div className={`flex flex-col items-center gap-1.5 p-2 w-20 rounded-xl transition-colors ${isOwner && !isMe ? 'cursor-pointer hover:bg-brand-surface' : ''}`}>
-                          <div className={`w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-xl shadow-md ${p.isAdmin ? 'bg-brand-emerald/20 text-brand-emerald ring-2 ring-brand-emerald/40' : 'bg-brand-surface text-gray-300'}`}>
+                        <div className={`flex flex-col items-center gap-1.5 p-2 w-20 rounded-xl transition-colors ${isAdmin && !isMe ? 'cursor-pointer hover:bg-brand-surface' : ''}`}>
+                          <div className={`w-14 h-14 rounded-full flex items-center justify-center font-extrabold text-xl shadow-md ${isParticipantAdmin ? 'bg-brand-emerald/20 text-brand-emerald ring-2 ring-brand-emerald/40' : 'bg-brand-surface text-gray-300'}`}>
                             {p.name.charAt(0).toUpperCase()}
                           </div>
                           <p className="text-xs font-semibold text-white truncate w-full text-center">{p.name}</p>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none ${p.isAdmin ? 'bg-brand-emerald/15 text-brand-emerald' : 'text-gray-500'}`}>
-                            {p.isAdmin ? 'Admin' : 'Member'}
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none ${isParticipantAdmin ? 'bg-brand-emerald/15 text-brand-emerald' : 'text-gray-500'}`}>
+                            {isParticipantAdmin ? 'Admin' : 'Member'}
                           </span>
                         </div>
-                        {isOwner && !isMe && (
+                        {isAdmin && !isMe && (
                           <div className="absolute top-1 right-1 opacity-0 group-hover/member:opacity-100 transition-opacity bg-brand-surface border border-brand-hover rounded-xl shadow-2xl p-1.5 z-10 flex flex-col gap-1 text-[10px] min-w-[100px]">
-                            <button onClick={() => handleToggleAdmin(p.id, p.isAdmin)} className="px-2.5 py-1.5 text-left text-brand-emerald hover:bg-brand-hover rounded-lg transition-colors">
-                              {p.isAdmin ? 'Revoke Admin' : 'Make Admin'}
+                            <button onClick={() => handleToggleAdmin(p.id, isParticipantAdmin)} className="px-2.5 py-1.5 text-left text-brand-emerald hover:bg-brand-hover rounded-lg transition-colors">
+                              {isParticipantAdmin ? 'Revoke Admin' : 'Make Admin'}
                             </button>
                             <button onClick={() => handleRemoveMember(p.id)} className="px-2.5 py-1.5 text-left text-red-400 hover:bg-red-950/40 rounded-lg transition-colors">
                               Remove
@@ -649,45 +719,140 @@ const WatchTogetherRoom = () => {
                 </div>
                 {copiedLink && <p className="text-[10px] text-brand-emerald -mt-1">✓ Copied!</p>}
 
-                {/* Enter Room CTA */}
-                {isOwner ? (
+                {/* Choose Movie or Show to Start CTA */}
+                {isAdmin ? (
                   <button
                     onClick={() => setShowBrowseView(true)}
                     className="w-full py-3.5 rounded-xl font-bold bg-brand-emerald text-black hover:bg-emerald-400 transition-colors flex items-center justify-center gap-2 text-sm shadow-lg shadow-brand-emerald/20 cursor-pointer"
                   >
-                    <Film size={16} /> Enter Room
+                    <Film size={16} /> Choose Movie or Show to Start
                   </button>
                 ) : (
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-brand-surface border border-brand-hover/50 text-xs text-gray-400">
                     <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
-                    Waiting for <strong className="text-white mx-1">{room.ownerName}</strong> to enter room...
+                    Waiting for <strong className="text-white mx-1">{room.ownerName}</strong> to choose a movie or show to start...
                   </div>
                 )}
               </div>
             </div>
 
             {/* Movie Selection Modal */}
-            {showBrowseView && isOwner && (
-              <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col p-4 sm:p-8 overflow-y-auto">
-                <div className="max-w-6xl mx-auto w-full flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-white">Select Movie or Show to Watch</h2>
-                  <button onClick={() => setShowBrowseView(false)} className="p-2 bg-brand-surface rounded-xl hover:bg-brand-hover cursor-pointer"><X size={20} /></button>
+            {showBrowseView && isAdmin && (
+              <div
+                onScroll={handleBrowseScroll}
+                className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col p-4 sm:p-8 overflow-y-auto custom-scrollbar"
+              >
+                <div className="max-w-6xl mx-auto w-full flex justify-between items-center mb-6 flex-shrink-0">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-white">Select Movie or Show to Watch</h2>
+                    <p className="text-xs text-gray-400">Search, filter genres, sort, and browse titles to start watching together</p>
+                  </div>
+                  <button onClick={() => setShowBrowseView(false)} className="p-2.5 bg-brand-surface rounded-xl hover:bg-brand-hover text-gray-300 hover:text-white cursor-pointer transition-colors"><X size={20} /></button>
                 </div>
-                <div className="max-w-6xl mx-auto w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {recommendations.map((m, idx) => (
-                    <div key={`${m.id}-${idx}`} onClick={() => selectMovie(m, m.media_type || (m.title ? 'movie' : 'tv'))} className="bg-brand-surface rounded-xl overflow-hidden cursor-pointer hover:ring-2 ring-brand-emerald transition-all group">
-                      <div className="aspect-[2/3] relative">
-                        <img src={getImageUrl(m.poster_path, 'w500')} alt={m.title || m.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <span className="px-4 py-2 bg-brand-emerald text-black font-bold text-xs rounded-xl shadow-lg">Start Playing</span>
+
+                <div className="max-w-6xl mx-auto w-full flex flex-col gap-6 flex-shrink-0 mb-6">
+                  {/* Search Bar */}
+                  <div>
+                    <input
+                      type="text"
+                      value={browseQuery}
+                      onChange={e => setBrowseQuery(e.target.value)}
+                      placeholder="Search movies or shows..."
+                      className="w-full bg-transparent border-b border-brand-hover pb-3 text-base sm:text-lg text-white placeholder-gray-500 focus:outline-none focus:border-brand-emerald transition-colors"
+                    />
+                  </div>
+
+                  {/* Filters (Borderless / Text links) */}
+                  <div className="space-y-3 text-xs">
+                    {/* Genres */}
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                      <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Genre:</span>
+                      {[
+                        { label: 'All', id: '' },
+                        { label: 'Action', id: '28' },
+                        { label: 'Comedy', id: '35' },
+                        { label: 'Horror', id: '27' },
+                        { label: 'Romance', id: '10749' },
+                        { label: 'Sci-Fi', id: '878' },
+                        { label: 'Drama', id: '18' },
+                        { label: 'Animation', id: '16' },
+                        { label: 'Thriller', id: '53' },
+                      ].map(g => (
+                        <button
+                          key={g.id}
+                          onClick={() => setBrowseGenre(g.id)}
+                          className={`cursor-pointer transition-colors ${browseGenre === g.id ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
+                        >
+                          {g.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Sort By */}
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                      <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Sort:</span>
+                      {[
+                        { label: 'Popular', id: 'popularity.desc' },
+                        { label: 'Top Rated', id: 'vote_average.desc' },
+                        { label: 'Newest', id: 'primary_release_date.desc' },
+                      ].map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => setBrowseSort(s.id)}
+                          className={`cursor-pointer transition-colors ${browseSort === s.id ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Year */}
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                      <span className="text-gray-500 font-bold uppercase tracking-wider text-[10px] w-14">Year:</span>
+                      {['', '2026', '2025', '2024', '2023', '2022', '2021', '2020', '2019'].map(y => (
+                        <button
+                          key={y}
+                          onClick={() => setBrowseYear(y)}
+                          className={`cursor-pointer transition-colors ${browseYear === y ? 'text-brand-emerald font-bold' : 'text-gray-400 hover:text-white'}`}
+                        >
+                          {y === '' ? 'All' : y}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Movie Results Grid */}
+                <div className="max-w-6xl mx-auto w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pb-12 flex-1">
+                  {browseMovies.map((m, idx) => (
+                    <div
+                      key={`${m.id}-${idx}`}
+                      onClick={() => selectMovie(m, m.media_type || (m.title ? 'movie' : 'tv'))}
+                      className="bg-brand-surface rounded-xl overflow-hidden cursor-pointer hover:ring-2 ring-brand-emerald transition-all group flex flex-col"
+                    >
+                      <div className="aspect-[2/3] relative bg-brand-background">
+                        <img
+                          src={getImageUrl(m.poster_path, 'w500')}
+                          alt={m.title || m.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center">
+                          <span className="px-3 py-2 bg-brand-emerald text-black font-bold text-xs rounded-xl shadow-lg">Start Watching</span>
                         </div>
                       </div>
-                      <div className="p-2.5">
+                      <div className="p-2.5 flex flex-col justify-between flex-1 bg-brand-surface">
                         <p className="text-xs font-bold text-white truncate">{m.title || m.name}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">{m.release_date ? m.release_date.split('-')[0] : (m.first_air_date ? m.first_air_date.split('-')[0] : '')}</p>
                       </div>
                     </div>
                   ))}
                 </div>
+
+                {browseLoading && (
+                  <div className="py-6 text-center text-xs text-brand-emerald font-semibold animate-pulse">
+                    Loading more movies & shows...
+                  </div>
+                )}
               </div>
             )}
           </div>
