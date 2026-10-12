@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Film, Users, Search, ArrowLeft, Check, X, AlertCircle, Share2, Copy, MessageSquare, Clock } from 'lucide-react';
+import { Film, Users, Search, ArrowLeft, Check, X, AlertCircle, Share2, Copy, MessageSquare, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import api from '../utils/api';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 import useRoomWebSocket from '../hooks/useRoomWebSocket';
@@ -113,6 +113,9 @@ const WatchTogetherRoom = () => {
 
   // Room expiration countdown
   const [remainingTime, setRemainingTime] = useState('');
+
+  // Close room confirmation modal
+  const [showCloseRoomModal, setShowCloseRoomModal] = useState(false);
 
   // Update remaining time every second
   useEffect(() => {
@@ -896,6 +899,21 @@ const WatchTogetherRoom = () => {
     }
   };
 
+  const handleCloseRoom = async () => {
+    setShowCloseRoomModal(false);
+
+    try {
+      await api.delete(`/rooms/${roomCode}`);
+      showToast('Room closed successfully');
+      setTimeout(() => {
+        navigate('/watch-together');
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to close room:', err);
+      showToast('Failed to close room');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-brand-emerald bg-brand-background">
@@ -1023,6 +1041,43 @@ const WatchTogetherRoom = () => {
 
   return (
     <div className="h-screen bg-brand-background text-white flex flex-col overflow-hidden">
+      {/* Close Room Confirmation Modal */}
+      {showCloseRoomModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-brand-surface border border-brand-hover rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={24} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Close Room?</h3>
+                <p className="text-xs text-gray-400">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-300 mb-6">
+              Are you sure you want to close "<strong className="text-white">{room?.title}</strong>"?
+              This will end the session for all participants and delete all messages.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCloseRoomModal(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-brand-background border border-brand-hover text-white hover:bg-brand-hover transition-colors font-bold text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCloseRoom}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors font-bold text-sm"
+              >
+                Close Room
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-4 z-50 bg-brand-emerald text-black font-bold text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
@@ -1062,6 +1117,16 @@ const WatchTogetherRoom = () => {
               <Film size={14} className="md:w-4 md:h-4" />
               <span className="inline lg:hidden">Change</span>
               <span className="hidden lg:inline">Change Movie</span>
+            </button>
+          )}
+          {isOwner && (
+            <button
+              onClick={() => setShowCloseRoomModal(true)}
+              className="px-2 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs md:text-sm transition-colors cursor-pointer flex items-center gap-1 md:gap-2 shadow-lg"
+              title="Close room permanently"
+            >
+              <Trash2 size={14} className="md:w-4 md:h-4" />
+              <span className="hidden sm:inline">Close</span>
             </button>
           )}
           <button

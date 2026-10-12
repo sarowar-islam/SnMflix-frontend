@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, PlusCircle, LogIn, Sparkles, Shield, ArrowLeft, Clock, UserCheck } from 'lucide-react';
+import { Users, PlusCircle, LogIn, Sparkles, Shield, ArrowLeft, Clock, UserCheck, X, AlertTriangle } from 'lucide-react';
 import api from '../utils/api';
 
 const WatchTogetherLobby = () => {
@@ -18,6 +18,11 @@ const WatchTogetherLobby = () => {
   const [error, setError] = useState('');
   const [activeRooms, setActiveRooms] = useState([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
+
+  // Close room confirmation modal
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [roomToClose, setRoomToClose] = useState(null);
+  const [closingRoom, setClosingRoom] = useState(false);
 
   // Fetch active rooms when component mounts (only for logged-in users)
   useEffect(() => {
@@ -99,7 +104,7 @@ const WatchTogetherLobby = () => {
 
     const code = roomCodeInput.trim().toUpperCase();
     if (!code) {
-      setError('Please enter a valid room code.');
+      setError('Please enter a valid room code or invitation link.');
       return;
     }
 
@@ -143,9 +148,80 @@ const WatchTogetherLobby = () => {
     return `${minutes}m`;
   };
 
+  // Handle close room button click
+  const handleCloseRoomClick = (e, room) => {
+    e.stopPropagation(); // Prevent navigating to the room
+    setRoomToClose(room);
+    setShowCloseModal(true);
+  };
+
+  // Confirm close room
+  const confirmCloseRoom = async () => {
+    if (!roomToClose) return;
+
+    setClosingRoom(true);
+    try {
+      await api.delete(`/rooms/${roomToClose.roomCode}`);
+      setShowCloseModal(false);
+      setRoomToClose(null);
+      // Refresh active rooms
+      fetchActiveRooms();
+    } catch (err) {
+      console.error('Failed to close room:', err);
+      setError('Failed to close room. Please try again.');
+    } finally {
+      setClosingRoom(false);
+    }
+  };
+
+  // Cancel close room
+  const cancelCloseRoom = () => {
+    setShowCloseModal(false);
+    setRoomToClose(null);
+  };
+
   return (
     <div className="min-h-[85vh] flex items-center justify-center p-4 text-white">
       <div className="max-w-4xl w-full">
+        {/* Close Room Confirmation Modal */}
+        {showCloseModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-brand-surface border border-brand-hover rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={24} className="text-red-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Close Room?</h3>
+                  <p className="text-xs text-gray-400">This action cannot be undone</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-300 mb-6">
+                Are you sure you want to close "<strong className="text-white">{roomToClose?.title}</strong>"?
+                This will end the session for all participants and delete all messages.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelCloseRoom}
+                  disabled={closingRoom}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-brand-background border border-brand-hover text-white hover:bg-brand-hover transition-colors font-bold text-sm disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmCloseRoom}
+                  disabled={closingRoom}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors font-bold text-sm disabled:opacity-50"
+                >
+                  {closingRoom ? 'Closing...' : 'Close Room'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!mode ? (
           // Main lobby view
           <div className="bg-brand-surface border border-brand-hover rounded-2xl p-6 md:p-8 shadow-2xl backdrop-blur-md">
@@ -172,28 +248,42 @@ const WatchTogetherLobby = () => {
                   {activeRooms.map((room) => (
                     <div
                       key={room.roomCode}
-                      onClick={() => navigate(`/watch-together/${room.roomCode}`)}
-                      className="bg-brand-background border border-brand-hover rounded-xl p-4 hover:border-brand-emerald transition-all cursor-pointer group flex flex-col items-center text-center"
+                      className="relative bg-brand-background border border-brand-hover rounded-xl p-4 hover:border-brand-emerald transition-all group flex flex-col items-center text-center"
                     >
-                      {/* Room Icon */}
-                      <div className="w-16 h-16 rounded-full bg-brand-emerald/10 border-2 border-brand-emerald/30 flex items-center justify-center mb-3 group-hover:border-brand-emerald group-hover:bg-brand-emerald/20 transition-all">
-                        <Users size={28} className="text-brand-emerald" />
-                      </div>
+                      {/* Close Button */}
+                      <button
+                        onClick={(e) => handleCloseRoomClick(e, room)}
+                        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center transition-all z-10"
+                        title="Close room"
+                      >
+                        <X size={14} />
+                      </button>
 
-                      {/* Room Name */}
-                      <h4 className="text-sm font-bold text-white truncate w-full mb-1 group-hover:text-brand-emerald transition-colors">
-                        {room.title}
-                      </h4>
+                      {/* Clickable room area */}
+                      <div
+                        onClick={() => navigate(`/watch-together/${room.roomCode}`)}
+                        className="cursor-pointer w-full flex flex-col items-center"
+                      >
+                        {/* Room Icon */}
+                        <div className="w-16 h-16 rounded-full bg-brand-emerald/10 border-2 border-brand-emerald/30 flex items-center justify-center mb-3 group-hover:border-brand-emerald group-hover:bg-brand-emerald/20 transition-all">
+                          <Users size={28} className="text-brand-emerald" />
+                        </div>
 
-                      {/* Room Code */}
-                      <p className="text-xs font-mono text-brand-emerald mb-2">
-                        {room.roomCode}
-                      </p>
+                        {/* Room Name */}
+                        <h4 className="text-sm font-bold text-white truncate w-full mb-1 group-hover:text-brand-emerald transition-colors">
+                          {room.title}
+                        </h4>
 
-                      {/* Remaining Time */}
-                      <div className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold">
-                        <Clock size={10} />
-                        {room.expiresAt ? getRemainingTime(room.expiresAt) : 'No limit'}
+                        {/* Room Code */}
+                        <p className="text-xs font-mono text-brand-emerald mb-2">
+                          {room.roomCode}
+                        </p>
+
+                        {/* Remaining Time */}
+                        <div className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold">
+                          <Clock size={10} />
+                          {room.expiresAt ? getRemainingTime(room.expiresAt) : 'No limit'}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -362,12 +452,12 @@ const WatchTogetherLobby = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Room Code</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Room Code or Invitation Link</label>
                 <input
                   type="text"
                   value={roomCodeInput}
                   onChange={e => setRoomCodeInput(e.target.value)}
-                  placeholder="e.g. A4F8B2"
+                  placeholder="e.g. A4F8B2 or paste link"
                   className="w-full p-3 bg-brand-background border border-brand-hover rounded-xl focus:outline-none focus:border-brand-emerald text-sm text-white uppercase tracking-wider"
                   required
                 />
