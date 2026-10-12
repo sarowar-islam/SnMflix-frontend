@@ -17,8 +17,12 @@ const useRoomWebSocket = (roomCode, userId, onPlaybackEvent) => {
     }
 
     try {
+      // Construct WebSocket URL from API base URL or default to localhost
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+      const wsUrl = apiBaseUrl.replace(/^http/, 'ws').replace(/\/api$/, '') + '/ws';
+
       const client = new Client({
-        brokerURL: 'ws://localhost:8080/ws',
+        brokerURL: wsUrl,
         connectHeaders: {
           login: userId || 'guest',
         },

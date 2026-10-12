@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Film, Users, Search, ArrowLeft, Check, X, AlertCircle, Share2, Copy, MessageSquare } from 'lucide-react';
+import { Film, Users, Search, ArrowLeft, Check, X, AlertCircle, Share2, Copy, MessageSquare, Clock } from 'lucide-react';
 import api from '../utils/api';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 import useRoomWebSocket from '../hooks/useRoomWebSocket';
@@ -110,6 +110,46 @@ const WatchTogetherRoom = () => {
   const [browseTotalPages, setBrowseTotalPages] = useState(1);
   const [browseMovies, setBrowseMovies] = useState([]);
   const [browseLoading, setBrowseLoading] = useState(false);
+
+  // Room expiration countdown
+  const [remainingTime, setRemainingTime] = useState('');
+
+  // Update remaining time every second
+  useEffect(() => {
+    if (!room?.expiresAt) return;
+
+    const updateCountdown = () => {
+      const now = new Date();
+      const expires = new Date(room.expiresAt);
+      const diff = expires - now;
+
+      if (diff <= 0) {
+        setRemainingTime('Expired');
+        // Redirect to lobby when expired
+        setTimeout(() => {
+          navigate('/watch-together');
+        }, 2000);
+        return;
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      if (hours > 0) {
+        setRemainingTime(`${hours}h ${minutes}m ${seconds}s`);
+      } else if (minutes > 0) {
+        setRemainingTime(`${minutes}m ${seconds}s`);
+      } else {
+        setRemainingTime(`${seconds}s`);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [room?.expiresAt, navigate]);
 
   // Fetch movies when filters change or modal opens
   useEffect(() => {
@@ -602,14 +642,7 @@ const WatchTogetherRoom = () => {
     return () => clearTimeout(timer);
   }, [myParticipant?.status, isAdmin, iframeSrc, roomCode]);
 
-  // Fetch trending movies for admin selection
-  useEffect(() => {
-    if (showBrowseView && isOwner) {
-      fetchMovies.fetchTrending(1)
-        .then(res => setRecommendations(res.data.results || []))
-        .catch(() => setRecommendations([]));
-    }
-  }, [showBrowseView, isOwner]);
+  // Removed unused recommendations fetch - browse view uses browseMovies instead
 
   // Fetch movie/show details when media changes
   useEffect(() => {
@@ -1007,6 +1040,15 @@ const WatchTogetherRoom = () => {
               <span className="truncate">Code: <strong className="text-brand-emerald font-mono">{room.roomCode}</strong></span>
               <span className="hidden sm:inline">•</span>
               <span className="hidden sm:inline truncate">Owner: {room.ownerName}</span>
+              {remainingTime && (
+                <>
+                  <span className="hidden sm:inline">•</span>
+                  <span className="text-yellow-400 font-mono font-bold flex items-center gap-1">
+                    <Clock size={12} />
+                    {remainingTime}
+                  </span>
+                </>
+              )}
               {isAdmin && <span className="px-1 md:px-1.5 py-0.5 bg-brand-emerald/20 text-brand-emerald rounded text-[9px] md:text-[10px] font-bold flex-shrink-0">Admin</span>}
             </p>
           </div>

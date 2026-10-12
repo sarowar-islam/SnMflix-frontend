@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Users, PlusCircle, LogIn, Sparkles, Shield, ArrowLeft } from 'lucide-react';
+import { Users, PlusCircle, LogIn, Sparkles, Shield, ArrowLeft, Clock, UserCheck } from 'lucide-react';
 import api from '../utils/api';
 
 const WatchTogetherLobby = () => {
@@ -10,10 +10,62 @@ const WatchTogetherLobby = () => {
 
   const [mode, setMode] = useState(null); // null, 'create', or 'join'
   const [roomTitle, setRoomTitle] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState(60);
+  const [maxParticipants, setMaxParticipants] = useState(10);
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [guestName, setGuestName] = useState(user?.username || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activeRooms, setActiveRooms] = useState([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+
+  // Fetch active rooms when component mounts (only for logged-in users)
+  useEffect(() => {
+    if (token) {
+      fetchActiveRooms();
+    }
+  }, [token]);
+
+  // Refetch active rooms when component becomes visible (user navigates back)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && token) {
+        fetchActiveRooms();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', () => {
+      if (token) {
+        fetchActiveRooms();
+      }
+    });
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', fetchActiveRooms);
+    };
+  }, [token]);
+
+  const fetchActiveRooms = async () => {
+    setLoadingRooms(true);
+    try {
+      const res = await api.get('/rooms/my-rooms');
+      console.log('[WatchTogether] Fetched active rooms:', res.data);
+      setActiveRooms(res.data || []);
+    } catch (err) {
+      console.error('[WatchTogether] Failed to fetch active rooms:', err);
+      console.error('[WatchTogether] Error details:', err.response?.data);
+
+      // If 401, user needs to log in again
+      if (err.response?.status === 401) {
+        console.warn('[WatchTogether] Not authenticated - user needs to log in');
+        setActiveRooms([]);
+      }
+    } finally {
+      setLoadingRooms(false);
+    }
+  };
 
   const handleCreateRoom = async (e) => {
     e.preventDefault();
@@ -29,7 +81,9 @@ const WatchTogetherLobby = () => {
       const res = await api.post('/rooms', {
         title: roomTitle.trim() || `${user?.username || 'User'}'s Room`,
         movieId: null,
-        mediaType: null
+        mediaType: null,
+        durationMinutes: durationMinutes,
+        maxParticipants: maxParticipants
       });
       navigate(`/watch-together/${res.data.roomCode}`);
     } catch (err) {
@@ -45,7 +99,7 @@ const WatchTogetherLobby = () => {
 
     const code = roomCodeInput.trim().toUpperCase();
     if (!code) {
-      setError('Please enter a valid room code or invitation link.');
+      setError('Please enter a valid room code.');
       return;
     }
 
@@ -72,57 +126,116 @@ const WatchTogetherLobby = () => {
     }
   };
 
+  // Calculate remaining time for a room
+  const getRemainingTime = (expiresAt) => {
+    const now = new Date();
+    const expires = new Date(expiresAt);
+    const diff = expires - now;
+
+    if (diff <= 0) return 'Expired';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+  };
+
   return (
-    <div className="min-h-[85vh] flex flex-col items-center justify-center p-4 text-white">
-      <div className="max-w-md w-full bg-brand-surface border border-brand-hover rounded-2xl p-8 shadow-2xl backdrop-blur-md">
-        <div className="flex items-center justify-center gap-3 mb-4 text-brand-emerald">
-          <Users size={36} />
-          <span className="text-2xl font-bold text-white">Watch Together</span>
-        </div>
-
-        <p className="text-xs text-gray-400 text-center mb-8">
-          Watch movies and shows with friends in real time with synchronized playback and live chat.
-        </p>
-
-        {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-950/50 border border-red-900/50 text-red-400 text-xs">
-            {error}
-          </div>
-        )}
-
+    <div className="min-h-[85vh] flex items-center justify-center p-4 text-white">
+      <div className="max-w-4xl w-full">
         {!mode ? (
-          <div className="flex flex-col gap-4">
-            <button
-              onClick={() => { setMode('create'); setError(''); }}
-              className="w-full p-4 rounded-xl font-bold bg-brand-emerald text-black hover:bg-emerald-400 transition-colors flex items-center justify-between text-sm shadow-lg shadow-brand-emerald/20 cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <PlusCircle size={22} />
-                <div className="text-left">
-                  <p className="font-bold text-sm">Create a Room</p>
-                  <p className="text-[11px] opacity-80 font-normal">Start a new watch party as admin</p>
-                </div>
-              </div>
-              <span className="text-lg font-bold group-hover:translate-x-1 transition-transform">→</span>
-            </button>
+          // Main lobby view
+          <div className="bg-brand-surface border border-brand-hover rounded-2xl p-6 md:p-8 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-center gap-3 mb-6 text-brand-emerald">
+              <Users size={36} />
+              <span className="text-2xl font-bold text-white">Watch Together</span>
+            </div>
 
-            <button
-              onClick={() => { setMode('join'); setError(''); }}
-              className="w-full p-4 rounded-xl font-bold bg-brand-background border border-brand-hover text-white hover:bg-brand-hover transition-colors flex items-center justify-between text-sm cursor-pointer group"
-            >
-              <div className="flex items-center gap-3 text-brand-emerald">
-                <LogIn size={22} />
-                <div className="text-left text-white">
-                  <p className="font-bold text-sm">Join a Room</p>
-                  <p className="text-[11px] text-gray-400 font-normal">Enter with a room code or link</p>
+            <p className="text-xs text-gray-400 text-center mb-8">
+              Watch movies and shows with friends in real time with synchronized playback and live chat.
+            </p>
+
+            {error && (
+              <div className="mb-6 p-3 rounded-xl bg-red-950/50 border border-red-900/50 text-red-400 text-xs">
+                {error}
+              </div>
+            )}
+
+            {/* Active Rooms Grid */}
+            {token && activeRooms.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Your Active Rooms</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
+                  {activeRooms.map((room) => (
+                    <div
+                      key={room.roomCode}
+                      onClick={() => navigate(`/watch-together/${room.roomCode}`)}
+                      className="bg-brand-background border border-brand-hover rounded-xl p-4 hover:border-brand-emerald transition-all cursor-pointer group flex flex-col items-center text-center"
+                    >
+                      {/* Room Icon */}
+                      <div className="w-16 h-16 rounded-full bg-brand-emerald/10 border-2 border-brand-emerald/30 flex items-center justify-center mb-3 group-hover:border-brand-emerald group-hover:bg-brand-emerald/20 transition-all">
+                        <Users size={28} className="text-brand-emerald" />
+                      </div>
+
+                      {/* Room Name */}
+                      <h4 className="text-sm font-bold text-white truncate w-full mb-1 group-hover:text-brand-emerald transition-colors">
+                        {room.title}
+                      </h4>
+
+                      {/* Room Code */}
+                      <p className="text-xs font-mono text-brand-emerald mb-2">
+                        {room.roomCode}
+                      </p>
+
+                      {/* Remaining Time */}
+                      <div className="flex items-center gap-1 text-[10px] text-yellow-400 font-bold">
+                        <Clock size={10} />
+                        {room.expiresAt ? getRemainingTime(room.expiresAt) : 'No limit'}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <span className="text-lg font-bold text-gray-400 group-hover:translate-x-1 transition-transform">→</span>
-            </button>
+            )}
+
+            {/* Create/Join Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                onClick={() => { setMode('create'); setError(''); }}
+                className="w-full p-4 rounded-xl font-bold bg-brand-emerald text-black hover:bg-emerald-400 transition-colors flex items-center justify-between text-sm shadow-lg shadow-brand-emerald/20 cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <PlusCircle size={22} />
+                  <div className="text-left">
+                    <p className="font-bold text-sm">Create a Room</p>
+                    <p className="text-[11px] opacity-80 font-normal">Start a new watch party</p>
+                  </div>
+                </div>
+                <span className="text-lg font-bold group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+
+              <button
+                onClick={() => { setMode('join'); setError(''); }}
+                className="w-full p-4 rounded-xl font-bold bg-brand-background border border-brand-hover text-white hover:bg-brand-hover transition-colors flex items-center justify-between text-sm cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 text-brand-emerald">
+                  <LogIn size={22} />
+                  <div className="text-left text-white">
+                    <p className="font-bold text-sm">Join a Room</p>
+                    <p className="text-[11px] text-gray-400 font-normal">Enter with room code</p>
+                  </div>
+                </div>
+                <span className="text-lg font-bold text-gray-400 group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+            </div>
           </div>
         ) : mode === 'create' ? (
-          <div>
-            <div className="flex items-center justify-between mb-4">
+          // Create Room Form
+          <div className="bg-brand-surface border border-brand-hover rounded-2xl p-6 md:p-8 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-between mb-6">
               <button
                 onClick={() => { setMode(null); setError(''); }}
                 className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
@@ -131,6 +244,12 @@ const WatchTogetherLobby = () => {
               </button>
               <span className="text-xs font-bold text-brand-emerald uppercase tracking-wider">Create Room</span>
             </div>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-xl bg-red-950/50 border border-red-900/50 text-red-400 text-xs">
+                {error}
+              </div>
+            )}
 
             <form onSubmit={handleCreateRoom} className="flex flex-col gap-4">
               <div>
@@ -142,6 +261,56 @@ const WatchTogetherLobby = () => {
                   placeholder={user ? `${user.username}'s Movie Night` : "Movie Night"}
                   className="w-full p-3 bg-brand-background border border-brand-hover rounded-xl focus:outline-none focus:border-brand-emerald text-sm text-white"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-2">Room Duration</label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[
+                    { label: '30 min', value: 30 },
+                    { label: '1 hour', value: 60 },
+                    { label: '2 hours', value: 120 },
+                    { label: '3 hours', value: 180 }
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setDurationMinutes(option.value)}
+                      className={`p-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        durationMinutes === option.value
+                          ? 'bg-brand-emerald text-black'
+                          : 'bg-brand-background border border-brand-hover text-white hover:border-brand-emerald'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-2">Maximum Participants</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: '2', value: 2 },
+                    { label: '5', value: 5 },
+                    { label: '10', value: 10 },
+                    { label: 'Unlimited', value: 0 }
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setMaxParticipants(option.value)}
+                      className={`p-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        maxParticipants === option.value
+                          ? 'bg-brand-emerald text-black'
+                          : 'bg-brand-background border border-brand-hover text-white hover:border-brand-emerald'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {!token && (
@@ -161,8 +330,9 @@ const WatchTogetherLobby = () => {
             </form>
           </div>
         ) : (
-          <div>
-            <div className="flex items-center justify-between mb-4">
+          // Join Room Form
+          <div className="bg-brand-surface border border-brand-hover rounded-2xl p-6 md:p-8 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-between mb-6">
               <button
                 onClick={() => { setMode(null); setError(''); }}
                 className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
@@ -171,6 +341,12 @@ const WatchTogetherLobby = () => {
               </button>
               <span className="text-xs font-bold text-brand-emerald uppercase tracking-wider">Join Room</span>
             </div>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-xl bg-red-950/50 border border-red-900/50 text-red-400 text-xs">
+                {error}
+              </div>
+            )}
 
             <form onSubmit={handleJoinRoom} className="flex flex-col gap-4">
               <div>
@@ -186,12 +362,12 @@ const WatchTogetherLobby = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Room Code or Invitation Link</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Room Code</label>
                 <input
                   type="text"
                   value={roomCodeInput}
                   onChange={e => setRoomCodeInput(e.target.value)}
-                  placeholder="e.g. A4F8B2 or paste link"
+                  placeholder="e.g. A4F8B2"
                   className="w-full p-3 bg-brand-background border border-brand-hover rounded-xl focus:outline-none focus:border-brand-emerald text-sm text-white uppercase tracking-wider"
                   required
                 />
@@ -210,7 +386,7 @@ const WatchTogetherLobby = () => {
         )}
       </div>
 
-      <div className="mt-8 max-w-md text-center text-xs text-gray-400 space-y-2">
+      <div className="absolute bottom-8 left-0 right-0 max-w-md mx-auto text-center text-xs text-gray-400 space-y-2 px-4">
         <p className="flex items-center justify-center gap-1.5 font-semibold text-gray-300">
           <Shield size={14} className="text-brand-emerald" /> Room owner controls playback & approves join requests.
         </p>
