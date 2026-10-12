@@ -552,16 +552,27 @@ const WatchTogetherRoom = () => {
           const initialTime = lastServerAdminTimeRef.current || 0;
           const drift = Math.abs(serverTime - initialTime);
 
-          // If there's significant drift, immediately seek to catch up
-          if (drift > 3) {
-            console.log('[Initial Sync] Catching up to admin position:', serverTime, 'seconds (drift:', drift, 's)');
-            setTimeout(() => {
+          console.log('[Initial Sync] Server time:', serverTime, 'Initial time:', initialTime, 'Drift:', drift, 'Playing:', serverRoom.isPlaying);
+
+          // Wait for iframe to fully load before sending commands
+          setTimeout(() => {
+            // Always seek to admin's current position
+            if (serverTime > 2) {
+              console.log('[Initial Sync] Seeking to:', serverTime);
               sendPlayerCommand(`seek${Math.floor(serverTime)}`);
+            }
+
+            // Apply play/pause state after seeking
+            setTimeout(() => {
               if (serverRoom.isPlaying) {
+                console.log('[Initial Sync] Admin is playing - starting playback');
                 triggerAutoPlay();
+              } else {
+                console.log('[Initial Sync] Admin is paused - pausing playback');
+                sendPlayerCommand('pause');
               }
-            }, 2000); // Wait 2 seconds for iframe to fully load
-          }
+            }, 500); // Wait 500ms after seek to apply play/pause
+          }, 2500); // Wait 2.5 seconds for iframe to fully load
 
           lastServerAdminTimeRef.current = serverTime;
           lastServerPlayingRef.current = serverRoom.isPlaying;
