@@ -939,7 +939,13 @@ const WatchTogetherRoom = () => {
         <h3 className="text-xs font-bold uppercase tracking-wider text-brand-emerald flex items-center gap-1.5">
           <MessageSquare size={14} /> Room Chat
         </h3>
-        <span className="text-[10px] text-gray-400">{messages.length} messages</span>
+        <button
+          onClick={() => isAdmin && setShowParticipantsModal(true)}
+          className={`text-[10px] text-gray-400 flex items-center gap-1 ${isAdmin ? 'hover:text-brand-emerald cursor-pointer transition-colors' : 'cursor-default'}`}
+        >
+          <Users size={12} />
+          <span>{participants.filter(p => p.status === 'APPROVED').length} participants</span>
+        </button>
       </div>
 
       <div ref={chatBoxRef} className="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 custom-scrollbar flex flex-col">
@@ -1429,6 +1435,94 @@ const WatchTogetherRoom = () => {
           {/* Chat panel - 80% on small screens, 50% on medium screens */}
           <div className="w-[80%] md:w-1/2 flex flex-col min-h-0 shadow-2xl">
             {renderChatSection()}
+          </div>
+        </div>
+      )}
+
+      {/* Participants Management Modal */}
+      {showParticipantsModal && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-brand-surface border border-brand-hover rounded-2xl w-full max-w-md shadow-2xl">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-brand-hover flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Users size={18} className="text-brand-emerald" />
+                Manage Participants ({participants.filter(p => p.status === 'APPROVED').length})
+              </h3>
+              <button
+                onClick={() => setShowParticipantsModal(false)}
+                className="p-1.5 rounded-lg hover:bg-brand-hover text-gray-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Participants List */}
+            <div className="p-4 max-h-96 overflow-y-auto custom-scrollbar space-y-2">
+              {participants.filter(p => p.status === 'APPROVED').length === 0 ? (
+                <p className="text-center text-xs text-gray-500 py-8">No participants in the room yet.</p>
+              ) : (
+                participants
+                  .filter(p => p.status === 'APPROVED')
+                  .map(participant => (
+                    <div
+                      key={participant.id}
+                      className="bg-brand-background border border-brand-hover rounded-xl p-3 flex items-center justify-between hover:border-brand-emerald/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-brand-emerald/20 text-brand-emerald flex items-center justify-center text-xs font-bold flex-shrink-0">
+                          {participant.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-white truncate">{participant.name}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {participant.isAdmin ? 'Admin' : 'Member'}
+                            {participant.userId === room.ownerId && ' • Owner'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons (only show if not owner) */}
+                      {participant.userId !== room.ownerId && (
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => handleToggleAdmin(participant.id, participant.isAdmin)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
+                              participant.isAdmin
+                                ? 'bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600/30 border border-yellow-600/40'
+                                : 'bg-brand-emerald/20 text-brand-emerald hover:bg-brand-emerald/30 border border-brand-emerald/40'
+                            }`}
+                            title={participant.isAdmin ? 'Revoke admin' : 'Make admin'}
+                          >
+                            {participant.isAdmin ? 'Revoke' : 'Make Admin'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Remove ${participant.name} from the room?`)) {
+                                handleRemoveMember(participant.id);
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-600/40 text-[10px] font-bold transition-colors cursor-pointer"
+                            title="Remove from room"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-brand-hover">
+              <button
+                onClick={() => setShowParticipantsModal(false)}
+                className="w-full py-2.5 rounded-xl bg-brand-hover hover:bg-brand-background text-white font-medium text-sm transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
