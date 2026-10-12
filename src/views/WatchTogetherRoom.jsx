@@ -89,6 +89,9 @@ const WatchTogetherRoom = () => {
 
   const [showBrowseView, setShowBrowseView] = useState(false);
 
+  // Participants modal for admin
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
+
   // Movie/Show details for display
   const [currentMediaDetails, setCurrentMediaDetails] = useState(null);
   const [showFullDescription, setShowFullDescription] = useState(false);
@@ -563,16 +566,30 @@ const WatchTogetherRoom = () => {
             }
 
             // Apply play/pause state after seeking
+            // If admin is paused, send pause multiple times to override autoplay
             setTimeout(() => {
               if (serverRoom.isPlaying) {
                 console.log('[Initial Sync] Admin is playing - starting playback');
                 triggerAutoPlay();
               } else {
                 console.log('[Initial Sync] Admin is paused - pausing playback');
+                // Send pause command multiple times to override autoplay
                 sendPlayerCommand('pause');
+                setTimeout(() => sendPlayerCommand('pause'), 200);
+                setTimeout(() => sendPlayerCommand('pause'), 500);
+                setTimeout(() => sendPlayerCommand('pause'), 1000);
+                setTimeout(() => sendPlayerCommand('pause'), 1500);
               }
-            }, 500); // Wait 500ms after seek to apply play/pause
-          }, 2500); // Wait 2.5 seconds for iframe to fully load
+
+              // Always ensure video is unmuted (for both playing and paused states)
+              setTimeout(() => {
+                console.log('[Initial Sync] Setting unmuted');
+                sendPlayerCommand('unmute');
+                setTimeout(() => sendPlayerCommand('unmute'), 300);
+                setTimeout(() => sendPlayerCommand('unmute'), 600);
+              }, 1000); // Send unmute commands after play/pause has settled
+            }, 800); // Wait 800ms after seek to apply play/pause
+          }, 3000); // Wait 3 seconds for iframe to fully load and autoplay to kick in
 
           lastServerAdminTimeRef.current = serverTime;
           lastServerPlayingRef.current = serverRoom.isPlaying;
