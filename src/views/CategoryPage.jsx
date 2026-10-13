@@ -32,19 +32,19 @@ export default function CategoryPage() {
   };
 
   const categoryTitles = {
-    action: 'Action Movies',
-    adventure: 'Adventure Movies',
-    animation: 'Animation Movies',
-    comedy: 'Comedy Movies',
-    crime: 'Crime Movies',
-    drama: 'Drama Movies',
-    fantasy: 'Fantasy Movies',
-    horror: 'Horror Movies',
-    mystery: 'Mystery Movies',
-    romance: 'Romance Movies',
-    scifi: 'Sci-Fi Movies',
-    thriller: 'Thriller Movies',
-    western: 'Western Movies',
+    action: 'Action Movies & Series',
+    adventure: 'Adventure Movies & Series',
+    animation: 'Animation Movies & Series',
+    comedy: 'Comedy Movies & Series',
+    crime: 'Crime Movies & Series',
+    drama: 'Drama Movies & Series',
+    fantasy: 'Fantasy Movies & Series',
+    horror: 'Horror Movies & Series',
+    mystery: 'Mystery Movies & Series',
+    romance: 'Romance Movies & Series',
+    scifi: 'Sci-Fi Movies & Series',
+    thriller: 'Thriller Movies & Series',
+    western: 'Western Movies & Series',
     movies: 'Movies',
     tv: 'TV Series',
     anime: 'Japanese Anime',
@@ -52,7 +52,7 @@ export default function CategoryPage() {
     bangla: 'Bangla Movies',
     award_winning: 'Award Winning & Masterpieces',
     top_rated: 'Best Rated Movies',
-    adult: '18+ Adult Movies',
+    adult: '18+ Adult Movies & Series',
   };
 
   const title = categoryTitles[category] || 'Browse Collection';
@@ -83,10 +83,7 @@ export default function CategoryPage() {
   };
 
   const processResults = (rawResults) => {
-    const targetGenreId = genreMap[category];
-    if (!targetGenreId) return rawResults;
-    const filtered = rawResults.filter(m => m.genre_ids && m.genre_ids.includes(targetGenreId));
-    return filtered.length > 0 ? filtered : rawResults;
+    return rawResults;
   };
 
   // Fetch initial movies when category, sort, or year changes
@@ -209,7 +206,7 @@ export default function CategoryPage() {
         </div>
       ) : movies.length === 0 ? (
         <div className="text-center py-24 text-gray-400">
-          <p className="text-lg">No movies found in this category.</p>
+          <p className="text-lg">No titles found in this category.</p>
         </div>
       ) : (
         <>
@@ -222,7 +219,7 @@ export default function CategoryPage() {
                 backdropUrl: getImageUrl(movie.backdrop_path, 'original'),
                 rating: movie.vote_average,
                 releaseDate: movie.release_date || movie.first_air_date,
-                mediaType: movie.media_type || (movie.name ? 'tv' : 'movie'),
+                mediaType: movie.media_type || (movie.name && !movie.title ? 'tv' : 'movie'),
               }} />
             ))}
           </div>

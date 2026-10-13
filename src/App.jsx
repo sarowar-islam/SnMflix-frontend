@@ -41,7 +41,7 @@ function App() {
           <Route path="/tv" element={<MainLayout><Home type="tv" /></MainLayout>} />
 
           <Route path="/movie/:id" element={<MainLayout><MovieDetails /></MainLayout>} />
-          <Route path="/login" element={<MainLayout><Login /></MainLayout>} />
+          <Route path="/login" element={<Login />} />
           <Route path="/watchlist" element={<MainLayout><Watchlist /></MainLayout>} />
           <Route path="/favorites" element={<MainLayout><Favorites /></MainLayout>} />
           <Route path="/category/:category" element={<MainLayout><CategoryPage /></MainLayout>} />
