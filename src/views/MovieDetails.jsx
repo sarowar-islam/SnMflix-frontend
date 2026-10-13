@@ -305,8 +305,8 @@ export default function MovieDetails() {
                     <span className="font-bold text-sm text-brand-emerald flex items-center gap-2">
                       @{rev.author}
                       {rev.author_details?.rating && (
-                        <span className="bg-brand-emerald/20 text-brand-emerald text-xs px-2 py-0.5 rounded font-semibold">
-                          ★ {rev.author_details.rating} / 10
+                        <span className="bg-brand-emerald/20 text-brand-emerald text-xs px-2 py-0.5 rounded-xl flex items-center gap-1 font-semibold">
+                          <Star size={12} className="text-yellow-400 fill-current" /> {rev.author_details.rating} / 10
                         </span>
                       )}
                     </span>

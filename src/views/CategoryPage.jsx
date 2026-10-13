@@ -15,14 +15,44 @@ export default function CategoryPage() {
   const sortBy = searchParams.get('sort') || 'popularity.desc';
   const year = searchParams.get('year') || '';
 
+  const genreMap = {
+    action: 28,
+    adventure: 12,
+    animation: 16,
+    comedy: 35,
+    crime: 80,
+    drama: 18,
+    fantasy: 14,
+    horror: 27,
+    mystery: 9648,
+    romance: 10749,
+    scifi: 878,
+    thriller: 53,
+    western: 37,
+  };
+
   const categoryTitles = {
+    action: 'Action Movies',
+    adventure: 'Adventure Movies',
+    animation: 'Animation Movies',
+    comedy: 'Comedy Movies',
+    crime: 'Crime Movies',
+    drama: 'Drama Movies',
+    fantasy: 'Fantasy Movies',
+    horror: 'Horror Movies',
+    mystery: 'Mystery Movies',
+    romance: 'Romance Movies',
+    scifi: 'Sci-Fi Movies',
+    thriller: 'Thriller Movies',
+    western: 'Western Movies',
     movies: 'Movies',
     tv: 'TV Series',
     anime: 'Japanese Anime',
-    top_rated: 'Best Rated Movies',
-    award_winning: 'Award Winning & Masterpieces',
-    adult: '18+ Adult Movies',
+    kdrama: 'Korean Dramas (K-Drama)',
     bangla: 'Bangla Movies',
+    award_winning: 'Award Winning & Masterpieces',
+    top_rated: 'Best Rated Movies',
+    adult: '18+ Adult Movies',
   };
 
   const title = categoryTitles[category] || 'Browse Collection';
@@ -35,28 +65,30 @@ export default function CategoryPage() {
     }
   }, [title]);
 
+  const getFetchFunction = (cat, p, s, y) => {
+    if (genreMap[cat]) {
+      return fetchMovies.fetchByGenre(genreMap[cat], p, s, y);
+    }
+    switch (cat) {
+      case 'movies': return fetchMovies.fetchActionMovies(p, s, y);
+      case 'tv': return fetchMovies.fetchNetflixOriginals(p);
+      case 'anime': return fetchMovies.fetchAnime(p, s, y);
+      case 'kdrama': return fetchMovies.fetchKdrama(p, s, y);
+      case 'bangla': return fetchMovies.fetchBangla(p, s, y);
+      case 'award_winning': return fetchMovies.fetchAwardWinning(p, s, y);
+      case 'top_rated': return fetchMovies.fetchTopRated(p, y);
+      case 'adult': return fetchMovies.fetchAdult(p, s, y);
+      default: return fetchMovies.fetchTrending(p);
+    }
+  };
+
   // Fetch initial movies when category, sort, or year changes
   useEffect(() => {
     setLoading(true);
     setPage(1);
     setHasMore(true);
 
-    let fetchFn;
-    if (category === 'movies') {
-      fetchFn = fetchMovies.fetchActionMovies(1, sortBy, year);
-    } else if (category === 'tv') {
-      fetchFn = fetchMovies.fetchNetflixOriginals(1);
-    } else if (category === 'anime') {
-      fetchFn = fetchMovies.fetchAnime(1, sortBy, year);
-    } else if (category === 'top_rated') {
-      fetchFn = fetchMovies.fetchTopRated(1, year);
-    } else if (category === 'adult') {
-      fetchFn = fetchMovies.fetchAdult(1, sortBy, year);
-    } else if (category === 'bangla') {
-      fetchFn = fetchMovies.fetchBangla(1, sortBy, year);
-    } else {
-      fetchFn = fetchMovies.fetchTrending(1);
-    }
+    const fetchFn = getFetchFunction(category, 1, sortBy, year);
 
     Promise.resolve(fetchFn)
       .then(res => {
@@ -87,22 +119,7 @@ export default function CategoryPage() {
     setLoadingMore(true);
     const nextPage = page + 1;
 
-    let fetchFn;
-    if (category === 'movies') {
-      fetchFn = fetchMovies.fetchActionMovies(nextPage, sortBy, year);
-    } else if (category === 'tv') {
-      fetchFn = fetchMovies.fetchNetflixOriginals(nextPage);
-    } else if (category === 'anime') {
-      fetchFn = fetchMovies.fetchAnime(nextPage, sortBy, year);
-    } else if (category === 'top_rated') {
-      fetchFn = fetchMovies.fetchTopRated(nextPage, year);
-    } else if (category === 'adult') {
-      fetchFn = fetchMovies.fetchAdult(nextPage, sortBy, year);
-    } else if (category === 'bangla') {
-      fetchFn = fetchMovies.fetchBangla(nextPage, sortBy, year);
-    } else {
-      fetchFn = fetchMovies.fetchTrending(nextPage);
-    }
+    const fetchFn = getFetchFunction(category, nextPage, sortBy, year);
 
     Promise.resolve(fetchFn)
       .then(res => {

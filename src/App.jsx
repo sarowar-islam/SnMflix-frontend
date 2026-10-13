@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
 import Home from './views/Home';
 import MovieDetails from './views/MovieDetails';
 import WatchPage from './views/WatchPage';
@@ -14,13 +15,20 @@ import WatchTogetherRoom from './views/WatchTogetherRoom';
 
 const NotFound = () => <div className="p-8 text-center text-white text-2xl mt-20">404 - Not Found</div>;
 
-// Layout wrapper for routes that need the navbar
-const MainLayout = ({ children }) => (
-  <div className="min-h-screen bg-brand-background text-brand-main">
-    <Navbar />
-    {children}
-  </div>
-);
+// Layout wrapper for routes that need the navbar and sidebar
+const MainLayout = ({ children }) => {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-brand-background text-brand-main">
+      <Navbar onToggleSidebar={() => setIsSidebarOpen(prev => !prev)} />
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      <div className="md:ml-16 lg:ml-64 transition-all duration-300">
+        {children}
+      </div>
+    </div>
+  );
+};
 
 function App() {
   return (

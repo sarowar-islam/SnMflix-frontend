@@ -115,6 +115,36 @@ export const fetchMovies = {
     if (year) url += `&first_air_date_year=${year}`;
     return tmdbApi.get(url);
   },
+  fetchKdrama: (page = 1, sort = 'popularity.desc', year = '') => {
+    let url = `/discover/tv?with_original_language=ko&with_genres=18&sort_by=${sort}&page=${page}`;
+    if (year) url += `&first_air_date_year=${year}`;
+    return tmdbApi.get(url);
+  },
+  fetchThriller: (page = 1, sort = 'popularity.desc', year = '') => {
+    let url = `/discover/movie?with_genres=53&sort_by=${sort}&page=${page}`;
+    if (year) url += `&primary_release_year=${year}`;
+    return tmdbApi.get(url);
+  },
+  fetchHorror: (page = 1, sort = 'popularity.desc', year = '') => {
+    let url = `/discover/movie?with_genres=27&sort_by=${sort}&page=${page}`;
+    if (year) url += `&primary_release_year=${year}`;
+    return tmdbApi.get(url);
+  },
+  fetchRomance: (page = 1, sort = 'popularity.desc', year = '') => {
+    let url = `/discover/movie?with_genres=10749&sort_by=${sort}&page=${page}`;
+    if (year) url += `&primary_release_year=${year}`;
+    return tmdbApi.get(url);
+  },
+  fetchRomcom: (page = 1, sort = 'popularity.desc', year = '') => {
+    let url = `/discover/movie?with_genres=35,10749&sort_by=${sort}&page=${page}`;
+    if (year) url += `&primary_release_year=${year}`;
+    return tmdbApi.get(url);
+  },
+  fetchByGenre: (genreId, page = 1, sort = 'popularity.desc', year = '') => {
+    let url = `/discover/movie?with_genres=${genreId}&sort_by=${sort}&page=${page}`;
+    if (year) url += `&primary_release_year=${year}`;
+    return tmdbApi.get(url);
+  },
   fetchDiscover: (params) => tmdbApi.get(`/discover/movie`, { params }),
   fetchMovieDetails: (id, type = 'movie') => tmdbApi.get(`/${type}/${id}?append_to_response=videos,credits,similar,reviews`),
   fetchReviews: (id, type = 'movie') => tmdbApi.get(`/${type}/${id}/reviews`),

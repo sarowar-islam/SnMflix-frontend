@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Heart, Plus, Check, X } from 'lucide-react';
+import { Play, Heart, Plus, Check, X, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function MovieCard({ movie, onRemove }) {
@@ -49,8 +49,8 @@ export default function MovieCard({ movie, onRemove }) {
 
         {/* Rating badge */}
         {movie.rating > 0 && (
-          <span className="absolute top-2 left-2 bg-black/70 backdrop-blur-md text-yellow-400 text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-            ★ {parseFloat(movie.rating).toFixed(1)}
+          <span className="absolute top-2 left-2 bg-black/70 backdrop-blur-md text-yellow-400 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-xl flex items-center gap-1">
+            <Star size={12} className="text-yellow-400 fill-current" /> {parseFloat(movie.rating).toFixed(1)}
           </span>
         )}
 
@@ -62,7 +62,7 @@ export default function MovieCard({ movie, onRemove }) {
               e.preventDefault();
               onRemove(movie.id);
             }}
-            className="absolute top-2 right-2 bg-black/70 hover:bg-red-600 text-white p-1.5 rounded-full transition-colors z-20 shadow-md cursor-pointer"
+            className="absolute top-2 right-2 bg-black/70 hover:bg-red-600 text-white p-1.5 rounded-xl transition-colors z-20 shadow-md cursor-pointer"
             title="Remove from Watching Now"
           >
             <X size={14} />
@@ -74,14 +74,14 @@ export default function MovieCard({ movie, onRemove }) {
           <div className="flex gap-1.5">
             <button
               onClick={navigateToPlay}
-              className="flex-1 bg-brand-emerald hover:bg-emerald-400 text-black py-1.5 rounded-lg flex items-center justify-center transition-colors font-bold text-xs"
+              className="flex-1 bg-brand-emerald hover:bg-emerald-400 text-black py-2 rounded-xl flex items-center justify-center transition-colors font-bold text-xs"
             >
               <Play size={14} className="mr-1" fill="currentColor" />
               <span>Watch</span>
             </button>
             <button
               onClick={handleWatchlist}
-              className={`p-1.5 rounded-lg transition-colors ${
+              className={`p-2 rounded-xl transition-colors ${
                 isWatchlist(String(movie.id)) ? 'bg-brand-emerald text-black' : 'bg-black/60 text-white hover:bg-brand-hover'
               }`}
               title="Watchlist"
@@ -90,7 +90,7 @@ export default function MovieCard({ movie, onRemove }) {
             </button>
             <button
               onClick={handleFavorite}
-              className={`p-1.5 rounded-lg transition-colors ${
+              className={`p-2 rounded-xl transition-colors ${
                 isFavorite(String(movie.id)) ? 'bg-red-500 text-white' : 'bg-black/60 text-white hover:bg-brand-hover'
               }`}
               title="Favorite"

@@ -310,7 +310,9 @@ export default function Home({ type = 'all' }) {
                   Trending #{heroIndex + 1}
                 </span>
                 {hero.vote_average > 0 && (
-                  <span className="text-yellow-400 font-bold text-sm">⭑ {parseFloat(hero.vote_average).toFixed(1)}</span>
+                  <span className="text-yellow-400 font-bold text-sm flex items-center gap-1">
+                    <Star size={14} className="text-yellow-400 fill-current" /> {parseFloat(hero.vote_average).toFixed(1)}
+                  </span>
                 )}
                 {(hero.release_date || hero.first_air_date) && (
                   <span className="text-gray-300 text-sm">{new Date(hero.release_date || hero.first_air_date).getFullYear()}</span>
