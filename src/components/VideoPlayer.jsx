@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
 
-export default function VideoPlayer({ playUrl, posterUrl, title }) {
+export default function VideoPlayer({ playUrl, posterUrl, title, isSandboxed }) {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const [error, setError] = useState(null);
@@ -272,6 +272,7 @@ export default function VideoPlayer({ playUrl, posterUrl, title }) {
             src={playUrl}
             title={title || "Video Player"}
             className="w-full h-full border-0 absolute inset-0"
+            {...(isSandboxed ? { sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock" } : {})}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullScreen"
             allowFullScreen
             onLoad={() => setIframeLoading(false)}

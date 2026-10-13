@@ -204,6 +204,7 @@ export default function WatchPage() {
             playUrl={getPlayUrl()}
             posterUrl={movie ? getImageUrl(movie.backdrop_path || movie.poster_path, 'original') : ''}
             title={movie?.title || movie?.name}
+            isSandboxed={selectedServer === 2 || selectedServer === 3}
           />
 
           {/* Server Selector Bar Below Video */}
@@ -222,13 +223,18 @@ export default function WatchPage() {
                 <button
                   key={srv.id}
                   onClick={() => setSelectedServer(srv.id)}
-                  className={`flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-initial px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex flex-col items-center ${
                     selectedServer === srv.id
                       ? 'bg-brand-emerald text-black shadow-lg shadow-brand-emerald/20 font-extrabold'
                       : 'bg-brand-background text-gray-300 hover:bg-brand-hover border border-brand-hover'
                   }`}
                 >
-                  {srv.name}
+                  <span>{srv.name}</span>
+                  {(srv.id === 2 || srv.id === 3) && (
+                    <span className={`text-[9px] leading-tight font-normal ${selectedServer === srv.id ? 'text-black/75' : 'text-gray-400'}`}>
+                      no ads
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
