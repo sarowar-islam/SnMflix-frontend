@@ -142,6 +142,17 @@ export const fetchMovies = {
   },
   fetchByGenre: (genreId, page = 1, sort = 'popularity.desc', year = '') => {
     let url = `/discover/movie?with_genres=${genreId}&sort_by=${sort}&page=${page}`;
+    if (genreId === 12) {
+      url += `&without_genres=28,27`; // Adventure without Action/Horror
+    } else if (genreId === 35) {
+      url += `&without_genres=27,53`; // Comedy without Horror/Thriller
+    } else if (genreId === 27) {
+      url += `&without_genres=35,16`; // Horror without Comedy/Animation
+    } else if (genreId === 10749) {
+      url += `&without_genres=27,28`; // Romance without Horror/Action
+    } else if (genreId === 53) {
+      url += `&without_genres=35,16`; // Thriller without Comedy/Animation
+    }
     if (year) url += `&primary_release_year=${year}`;
     return tmdbApi.get(url);
   },

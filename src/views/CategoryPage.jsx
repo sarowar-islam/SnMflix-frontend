@@ -82,6 +82,13 @@ export default function CategoryPage() {
     }
   };
 
+  const processResults = (rawResults) => {
+    const targetGenreId = genreMap[category];
+    if (!targetGenreId) return rawResults;
+    const filtered = rawResults.filter(m => m.genre_ids && m.genre_ids.includes(targetGenreId));
+    return filtered.length > 0 ? filtered : rawResults;
+  };
+
   // Fetch initial movies when category, sort, or year changes
   useEffect(() => {
     setLoading(true);
@@ -92,7 +99,7 @@ export default function CategoryPage() {
 
     Promise.resolve(fetchFn)
       .then(res => {
-        const results = res.data.results || [];
+        const results = processResults(res.data.results || []);
         setMovies(results);
         if (results.length === 0 || page >= (res.data.total_pages || 1)) {
           setHasMore(false);
@@ -123,7 +130,7 @@ export default function CategoryPage() {
 
     Promise.resolve(fetchFn)
       .then(res => {
-        const newResults = res.data.results || [];
+        const newResults = processResults(res.data.results || []);
         if (newResults.length === 0 || nextPage >= (res.data.total_pages || 50)) {
           setHasMore(false);
         }

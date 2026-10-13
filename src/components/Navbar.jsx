@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Heart, Library, Search, Menu, Clock, Star, Users, LogIn } from 'lucide-react';
+import { LogOut, Heart, Library, Search, Menu, Clock, Star, Users } from 'lucide-react';
 import { fetchMovies, getImageUrl } from '../utils/tmdb';
 
 export default function Navbar({ onToggleSidebar }) {
@@ -89,32 +89,32 @@ export default function Navbar({ onToggleSidebar }) {
 
   return (
     <nav className="sticky top-0 z-40 bg-brand-surface/95 backdrop-blur-md border-b border-brand-hover h-16 flex items-center">
-      <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between gap-3">
+      <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
           {/* Left: Hamburger menu button + Logo */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <button
               onClick={onToggleSidebar}
               className="p-2 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover text-gray-200 transition-colors cursor-pointer flex items-center justify-center"
               title="Toggle Menu"
             >
-              <Menu size={20} className="text-brand-emerald" />
+              <Menu size={18} className="text-brand-emerald" />
             </button>
 
-            <Link to="/" className="flex items-center space-x-2">
-              <img src="/images/logo.png" alt="SnM Flix" className="h-7 sm:h-8 w-auto object-contain" />
+            <Link to="/" className="flex items-center">
+              <img src="/images/logo.png" alt="SnM Flix" className="h-6 sm:h-8 w-auto object-contain" />
             </Link>
           </div>
 
-          {/* Center: Proper UI Matched Big Movie Search Bar with Live Autocomplete & History */}
-          <div ref={searchRef} className="flex-1 max-w-sm sm:max-w-xl mx-2 relative">
+          {/* Center: Sleek Responsive Search Bar */}
+          <div ref={searchRef} className="flex-1 max-w-[150px] xs:max-w-xs sm:max-w-sm md:max-w-md lg:max-w-xl mx-1 sm:mx-2 relative">
             <form onSubmit={handleSearchSubmit} className="relative">
-               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Search className="h-4 w-4 text-brand-emerald" />
+               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-brand-emerald" />
                </div>
                <input
-                  className="block w-full pl-10 pr-4 py-2 border border-brand-hover rounded-xl leading-5 bg-brand-background text-gray-100 placeholder-gray-400 focus:outline-none focus:border-brand-emerald focus:ring-1 focus:ring-brand-emerald text-xs sm:text-sm transition-colors shadow-inner"
-                  placeholder="Search movies, TV shows, anime, K-drama..."
+                  className="block w-full pl-9 sm:pl-10 pr-3 py-1.5 sm:py-2 border border-brand-hover rounded-xl leading-5 bg-brand-background text-gray-100 placeholder-gray-400 focus:outline-none focus:border-brand-emerald focus:ring-1 focus:ring-brand-emerald text-xs sm:text-sm transition-colors shadow-inner"
+                  placeholder="Search movies, TV..."
                   type="search"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -133,26 +133,21 @@ export default function Navbar({ onToggleSidebar }) {
                       <div
                         key={item.id}
                         onClick={() => selectSuggestion(item)}
-                        className="flex items-center gap-3 p-2.5 hover:bg-brand-hover/70 rounded-xl cursor-pointer transition-colors"
+                        className="flex items-center gap-2.5 p-2 hover:bg-brand-hover/70 rounded-xl cursor-pointer transition-colors"
                       >
                         <img
                           src={getImageUrl(item.poster_path || item.profile_path, 'w92')}
                           alt={item.title || item.name}
-                          className="w-10 h-14 object-cover rounded-xl flex-shrink-0"
+                          className="w-8 h-12 object-cover rounded-xl flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs sm:text-sm font-bold text-white truncate">{item.title || item.name}</p>
-                          <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                            <span className="uppercase px-1.5 py-0.5 bg-brand-background rounded-xl text-[10px] font-semibold text-brand-emerald">
+                          <p className="text-xs font-bold text-white truncate">{item.title || item.name}</p>
+                          <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                            <span className="uppercase px-1.5 py-0.2 bg-brand-background rounded-xl font-semibold text-brand-emerald">
                               {item.media_type || (item.name && !item.title ? 'tv' : 'movie')}
                             </span>
                             {(item.release_date || item.first_air_date) && (
                               <span>{new Date(item.release_date || item.first_air_date).getFullYear()}</span>
-                            )}
-                            {item.vote_average > 0 && (
-                              <span className="flex items-center gap-0.5 text-yellow-400">
-                                <Star size={12} fill="currentColor" /> {parseFloat(item.vote_average).toFixed(1)}
-                              </span>
                             )}
                           </div>
                         </div>
@@ -192,39 +187,43 @@ export default function Navbar({ onToggleSidebar }) {
             )}
           </div>
 
-          {/* Right Side: Action Buttons & Clean Sign In Button */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
-            <Link
-              to="/watch-together"
-              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-emerald/10 hover:bg-brand-emerald/20 border border-brand-emerald/30 text-brand-emerald transition-colors text-xs font-bold"
-              title="Watch Together"
-            >
-              <Users size={15} />
-              <span className="hidden lg:inline">Watch Together</span>
-            </Link>
-
+          {/* Right Side: Action Buttons */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            {/* Desktop Watchlist */}
             <Link
               to="/watchlist"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover text-gray-300 hover:text-white transition-colors text-xs font-semibold"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover text-gray-300 hover:text-white transition-colors text-xs font-semibold"
               title="Watchlist"
             >
               <Library size={15} className="text-brand-emerald" />
               <span className="hidden lg:inline">Watchlist</span>
             </Link>
 
+            {/* Desktop Favorites */}
             <Link
               to="/favorites"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover text-gray-300 hover:text-white transition-colors text-xs font-semibold"
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover text-gray-300 hover:text-white transition-colors text-xs font-semibold"
               title="Favorites"
             >
               <Heart size={15} className="text-red-500" />
               <span className="hidden lg:inline">Favorites</span>
             </Link>
 
+            {/* Watch Together (Smaller icon button) */}
+            <Link
+              to="/watch-together"
+              className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-brand-emerald/10 hover:bg-brand-emerald/20 border border-brand-emerald/30 text-brand-emerald transition-colors text-xs font-bold"
+              title="Watch Together"
+            >
+              <Users size={15} />
+              <span className="hidden md:inline">Watch Together</span>
+            </Link>
+
+            {/* Sign In / User Profile (Bigger Sign In Button with exact rounded-xl soft round) */}
             {user ? (
               <div className="relative group">
-                <button className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover transition-colors cursor-pointer">
-                  <div className="w-7 h-7 rounded-full bg-brand-emerald text-black flex items-center justify-center font-bold text-xs">
+                <button className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-brand-surface hover:bg-brand-hover border border-brand-hover transition-colors cursor-pointer">
+                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-brand-emerald text-black flex items-center justify-center font-bold text-xs">
                     {user.username?.charAt(0).toUpperCase() || 'U'}
                   </div>
                   <span className="hidden md:inline text-xs font-bold text-white truncate max-w-[100px]">{user.username}</span>
@@ -236,8 +235,11 @@ export default function Navbar({ onToggleSidebar }) {
                     <p className="text-xs font-bold text-white truncate">{user.username}</p>
                     <p className="text-[10px] text-brand-emerald mt-1 font-semibold">Rooms Created: {user.roomCount || 0}</p>
                   </div>
-                  <Link to="/watch-together" className="flex items-center gap-2 px-4 py-2 text-xs text-brand-emerald font-bold hover:bg-brand-hover md:hidden">
-                    <Users size={14} /> Watch Together
+                  <Link to="/watchlist" className="flex items-center gap-2 px-4 py-2 text-xs text-gray-300 hover:bg-brand-hover sm:hidden">
+                    <Library size={14} /> Watchlist
+                  </Link>
+                  <Link to="/favorites" className="flex items-center gap-2 px-4 py-2 text-xs text-gray-300 hover:bg-brand-hover sm:hidden">
+                    <Heart size={14} /> Favorites
                   </Link>
                   <button
                     onClick={logout}
@@ -250,7 +252,7 @@ export default function Navbar({ onToggleSidebar }) {
             ) : (
               <Link
                 to="/login"
-                className="px-4 py-2 rounded-xl bg-brand-emerald text-black hover:bg-emerald-400 transition-colors font-bold text-xs sm:text-sm flex items-center justify-center shadow-lg shadow-brand-emerald/20"
+                className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-brand-emerald text-black hover:bg-emerald-400 transition-colors font-bold text-xs sm:text-sm flex items-center justify-center shadow-lg shadow-brand-emerald/25 flex-shrink-0"
               >
                 Sign In
               </Link>
